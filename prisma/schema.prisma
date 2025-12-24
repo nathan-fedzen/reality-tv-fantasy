@@ -12,6 +12,24 @@ datasource db {
   provider = "postgresql"
 }
 
+enum ShowType {
+  SURVIVOR
+  DRAG_RACE
+  GENERIC
+}
+
+enum LeagueVisibility {
+  PUBLIC
+  PRIVATE
+}
+
+enum LeagueRole {
+  COMMISSIONER
+  CO_COMMISSIONER
+  PLAYER
+}
+
+
 model User {
   id            String    @id @default(cuid())
   name          String?
@@ -20,6 +38,8 @@ model User {
   image         String?
   accounts      Account[]
   sessions      Session[]
+  leaguesCreated League[] @relation("LeaguesCreatedBy")
+  leagueMembers  LeagueMember[]
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }
@@ -58,4 +78,54 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
+}
+
+model League {
+  id           String           @id @default(cuid())
+  name         String
+  showType     ShowType
+  visibility   LeagueVisibility @default(PRIVATE)
+  maxPlayers   Int              @default(12)
+
+  // who created it (not necessarily the only commissioner)
+  createdById  String
+  createdBy    User             @relation("LeaguesCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  // timestamps
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  // relations
+  members      LeagueMember[]
+  invites      LeagueInvite[]
+
+  @@index([showType])
+  @@index([createdById])
+}
+
+model LeagueMember {
+  id        String     @id @default(cuid())
+  leagueId  String
+  userId    String
+  role      LeagueRole @default(PLAYER)
+  joinedAt  DateTime   @default(now())
+
+  league    League     @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([leagueId, userId])
+  @@index([userId])
+}
+
+model LeagueInvite {
+  id         String     @id @default(cuid())
+  leagueId   String
+  token      String     @unique
+  isActive   Boolean    @default(true)
+  expiresAt  DateTime?
+  createdAt  DateTime   @default(now())
+
+  league     League     @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+
+  @@index([leagueId])
 }
