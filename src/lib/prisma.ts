@@ -11,7 +11,13 @@ export const pool =
   globalForPrisma.pool ??
   new Pool({
     connectionString: process.env.DATABASE_URL,
+    ssl: {
+      rejectUnauthorized: false,
+      // Helps in some Windows chain issues
+      requestCert: false,
+    },
   });
+
 
 export const prisma =
   globalForPrisma.prisma ??
