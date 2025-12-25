@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
-import { getSession } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import CopyButton from "@/components/copy-button";
+import DeleteLeagueButton from "@/components/delete-league-button";
 
 
 export default async function LeaguePage({
@@ -11,8 +12,8 @@ export default async function LeaguePage({
 }) {
     const { id } = await params;
 
-    const session = await getSession();
-    if (!session) redirect("/login");
+    const user = await getCurrentUser();
+    if (!user) redirect("/login");
 
     if (!id || id === "undefined") {
         return <main className="p-6">Invalid league id.</main>;
@@ -30,8 +31,14 @@ export default async function LeaguePage({
         return <main className="p-6">League not found.</main>;
     }
 
-    const inviteToken = league.invites[0]?.token;
-    const joinUrl = inviteToken ? `/join/${inviteToken}` : null;
+    const inviteToken = league.invites[0]?.token ?? null;
+
+    const baseUrl =
+        process.env.NEXT_PUBLIC_APP_URL ||
+        process.env.NEXTAUTH_URL ||
+        "http://localhost:3000";
+
+    const inviteUrl = inviteToken ? `${baseUrl}/join/${inviteToken}` : null;
 
     return (
         <main className="mx-auto w-full max-w-md p-4 pb-10">
@@ -41,17 +48,16 @@ export default async function LeaguePage({
             </p>
 
             <div className="mt-6 space-y-4">
-                {joinUrl && (
+                {inviteUrl && (
                     <div className="rounded-md border p-3 text-sm">
                         <div className="font-medium">Invite link</div>
 
                         <CopyButton
-                            text={`${process.env.NEXTAUTH_URL ?? "http://localhost:3000"}${joinUrl}`}
+                            text={inviteUrl}
                             className="mt-2 w-full rounded-md border px-3 py-2"
                         />
                     </div>
                 )}
-
 
                 <div className="rounded-md border p-3 text-sm">
                     <div className="font-medium">Members</div>
@@ -63,6 +69,19 @@ export default async function LeaguePage({
                         ))}
                     </ul>
                 </div>
+                {league.createdById === user.id && (
+                    <div className="rounded-md border p-3 text-sm">
+                        <div className="font-medium text-red-700">Danger zone</div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                            Delete this league (intended for cleaning up test leagues).
+                        </p>
+
+                        <div className="mt-3">
+                            <DeleteLeagueButton leagueId={league.id} leagueName={league.name} />
+                        </div>
+                    </div>
+                )}
+
             </div>
         </main>
     );

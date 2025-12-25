@@ -1,10 +1,13 @@
 import { redirect } from "next/navigation";
+import { getCurrentUser } from "@/lib/auth";
 import { getSession } from "@/lib/auth";
 import CreateLeagueForm from "./ui";
 
 export default async function NewLeaguePage() {
-  const session = await getSession();
-  if (!session) redirect("/login");
+  // const session = await getSession();
+  // if (!session) redirect("/login");
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
 
   return (
     <main className="mx-auto w-full max-w-md p-4 pb-10">
