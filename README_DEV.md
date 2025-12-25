@@ -1,234 +1,171 @@
 
-# 🛠️ Development Workflow & Chat Handoff Guide
+# Updated workflow + chat handoff (for this repo structure)
 
-This document exists to:
+## ✅ Start of Development Day (Local Setup)
 
-* Prevent recurring local dev issues (TLS, Prisma, auth)
-* Keep ChatGPT context aligned across sessions
-* Avoid re-debugging solved problems
-* Make starting and ending dev days fast and consistent
-
-This project uses:
-
-* Next.js App Router (Server Components)
-* Prisma + PostgreSQL
-* NextAuth (magic link) with PrismaAdapter
-* Windows + PowerShell local dev
-
----
-
-## 🚀 Start of Development Day (Local Setup)
-
-### 1️⃣ Start local dev **the correct way**
-
-**PowerShell (Windows):**
+### 1) Start local dev (Windows / PowerShell)
 
 ```powershell
 $env:NODE_TLS_REJECT_UNAUTHORIZED="0"
 npm run dev
 ```
 
-**Why this is required**
-
-* Allows Prisma + NextAuth to connect to Postgres with a self-signed cert
-* Prevents `adapter_error_getSessionAndUser`
-* Must be set **every new terminal session**
-
-> ⚠️ Never do this in production.
-
----
-
-### 2️⃣ If Prisma types act weird
-
-Run:
+### 2) If Prisma types act weird
 
 ```bash
 npx prisma generate
 ```
 
-**Fixes**
+### 3) Sanity check pages
 
-* Stale Prisma client
-* Incorrect nullability / missing fields
-* TypeScript errors after schema changes
-
----
-
-### 3️⃣ Quick sanity check
-
-Confirm:
-
-* Dev server boots without Prisma TLS errors
-* `/login` loads
-* Dev Mode banner appears **only if bypass is enabled**
+* `/login` loads without Prisma/NextAuth adapter errors
+* `/dashboard` redirects to `/login` when logged out
+* league pages load for the correct user
 
 ---
 
-## 🔐 Auth Mode Awareness (VERY IMPORTANT)
+## 🔐 Auth & Dev Bypass (Source of truth files)
 
-### Dev Auth Bypass
+### Auth routes + session behavior
 
-Controlled via `.env.local`:
+* NextAuth route:
+
+  * `src/app/api/auth/[...nextauth]/route.ts`
+* Auth helper:
+
+  * `src/lib/auth.ts`
+
+    * `getCurrentUser()` (used for server-side gating)
+    * dev bypass controlled by `.env.local`
+
+### Dev bypass env flags
+
+In `.env.local`:
 
 ```env
-DEV_AUTH_BYPASS=true
-NEXT_PUBLIC_DEV_AUTH_BYPASS=true
+DEV_AUTH_BYPASS=true|false
+DEV_AUTH_EMAIL=dev@nathan.local
+NEXT_PUBLIC_DEV_AUTH_BYPASS=true|false
+NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
-**Behavior**
-
-* Server-side auth is bypassed
-* No magic link required
-* Client `useSession()` may still show logged out (expected)
-
-To test real auth:
-
-```env
-DEV_AUTH_BYPASS=false
-NEXT_PUBLIC_DEV_AUTH_BYPASS=false
-```
-
-➡️ **Restart dev server after changing**
+> Reminder: If bypass is ON, logout won’t “feel” real because server-side auth always returns a user.
 
 ---
 
 ## 🧠 Start of a NEW Chat with ChatGPT (Context Snapshot)
 
-When starting a new chat, **paste this first**:
+When starting a new chat, paste this:
 
 ```
 Context Snapshot:
-- Next.js App Router (Server Components)
+- Repo: reality-tv-fantasy-app (Next.js App Router, Server Components)
 - Prisma + PostgreSQL
-- NextAuth magic link auth (PrismaAdapter)
-- No middleware.ts
-- Auth handled via getCurrentUser() in lib/auth.ts
-- Dev auth bypass exists (DEV_AUTH_BYPASS)
-- CopyButton is a client component
-- League pages are server components
-- Invite links are /join/[token]
-- Windows + PowerShell
-- NODE_TLS_REJECT_UNAUTHORIZED=0 required for local dev
+- NextAuth magic link using PrismaAdapter
+- Auth helpers: src/lib/auth.ts (getCurrentUser)
+- NextAuth route: src/app/api/auth/[...nextauth]/route.ts
+- Leagues API:
+  - POST create: src/app/api/leagues/route.ts
+  - DELETE league: src/app/api/leagues/[id]/route.ts
+  - Invite mgmt: src/app/api/leagues/[id]/invite/route.ts
+- Join flow: src/app/join/[token]/page.tsx
+- League page: src/app/leagues/[id]/page.tsx
+- Dashboard: src/app/dashboard/page.tsx
+- Components live in: src/components/*
+- Windows + PowerShell:
+  $env:NODE_TLS_REJECT_UNAUTHORIZED="0"; npm run dev
+- Domain: realitytvfantasy.app (Resend set up / in progress)
 ```
 
 ---
 
-## 📂 File Structure Snapshot (Paste When Relevant)
+## 📂 File Structure Snapshot (paste when debugging)
 
-```
-Key files:
-- src/lib/auth.ts
-- src/app/api/auth/[...nextauth]/route.ts
-- src/app/leagues/[id]/page.tsx
-- src/app/api/leagues/route.ts
-- src/components/copy-button.tsx
-- src/app/layout.tsx (Dev Mode banner)
-```
+Key project paths:
 
-This prevents:
+### Pages
 
-* Context loss across chats
-* Incorrect architectural assumptions
-* Re-solving already-fixed issues
+* Home: `src/app/page.tsx`
+* Dashboard: `src/app/dashboard/page.tsx`
+* Login: `src/app/login/page.tsx` (+ `ui.tsx`)
+* Verify: `src/app/verify/page.tsx`
+* Create league: `src/app/leagues/new/page.tsx` (+ `ui.tsx`)
+* League detail: `src/app/leagues/[id]/page.tsx`
+* Join by token: `src/app/join/[token]/page.tsx`
+
+### API Routes
+
+* NextAuth: `src/app/api/auth/[...nextauth]/route.ts`
+* Create league: `src/app/api/leagues/route.ts`
+* Delete league: `src/app/api/leagues/[id]/route.ts`
+* Invite management: `src/app/api/leagues/[id]/invite/route.ts`
+
+### Components
+
+* `src/components/copy-button.tsx`
+* `src/components/logout-button.tsx`
+* `src/components/delete-league-button.tsx`
+* `src/components/invite-controls.tsx`
+* `src/components/dev-mode-banner.tsx`
+* UI primitives: `src/components/ui/*`
+
+### Lib
+
+* Prisma client: `src/lib/prisma.ts`
+* Auth helpers: `src/lib/auth.ts`
+
+### Prisma schema/migrations
+
+* `prisma/schema.prisma`
+* `prisma/migrations/*`
 
 ---
 
-## 🧪 Mid-Day / Before Big Changes Checklist
+## ✅ End of Development Day (MANDATORY Chat Handoff)
 
-Before starting a new feature or refactor:
-
-* [ ] Dev server started with TLS disabled
-* [ ] Prisma client generated
-* [ ] Auth bypass ON or OFF intentionally
-* [ ] Server vs Client component responsibility is clear
-* [ ] No event handlers in Server Components
-
----
-
-## 🌙 End of Development Day (MANDATORY)
-
-Before stopping for the day, **paste this into ChatGPT**:
+Before ending the day, paste this:
 
 ```
 End of Day Recap:
-- What we fixed:
-- What works now:
-- What is intentionally bypassed:
-- What errors still exist:
-- Last files touched:
-- Next thing to do tomorrow:
+- What I built today:
+- What works now (routes/pages):
+- What I changed (file paths):
+- What’s next (1-3 tasks):
+- Any env requirements (TLS, bypass):
 ```
 
 ### Example
 
 ```
 End of Day Recap:
-- Added dev auth bypass
-- Fixed Prisma TLS issue via NODE_TLS_REJECT_UNAUTHORIZED
-- Invite links copy correctly
-- League page uses getCurrentUser()
-- CopyButton is client component
-- Next step: implement /join/[token] flow
+- Implemented join flow + logout button
+- Invite management (enable/disable/regenerate) works
+- Updated league page to show invite status + controls
+- Files touched:
+  - src/app/join/[token]/page.tsx
+  - src/components/logout-button.tsx
+  - src/app/leagues/[id]/page.tsx
+  - src/app/api/leagues/[id]/invite/route.ts
+- Next: start Drag Race picks system (Queens + Entry/Picks models)
+- Local start: $env:NODE_TLS_REJECT_UNAUTHORIZED="0"; npm run dev
 ```
 
-This ensures:
-
-* Fast pickup tomorrow
-* No repeated debugging
-* Accurate continuation of work
-
 ---
 
-## ❌ Things NOT to Do
+## ❌ Things NOT to do
 
-* ❌ Do not set `NODE_ENV` manually
-* ❌ Do not add event handlers to Server Components
-* ❌ Do not assume ChatGPT remembers previous chats
-* ❌ Do not debug Prisma before checking TLS env
-* ❌ Do not bypass auth unintentionally
-
----
-
-## ✅ Golden Rules
-
-* Server Components → data + layout
-* Client Components → interactivity
-* One auth source of truth: `getCurrentUser()`
-* Auth bypass is **dev-only**
-* Every new chat starts with a snapshot
-* Every day ends with a recap
+* Don’t set `NODE_ENV` manually.
+* Don’t put event handlers inside Server Components.
+* Don’t assume picks/permissions are enforced client-side (always server).
 
 ---
 
 ## 🧭 Debug Order When Something Breaks
 
-Ask these **in order**:
+1. Did you start dev with TLS disabled?
+2. Did you regenerate Prisma client?
+3. Is `DEV_AUTH_BYPASS` set correctly for the test?
+4. Is it a Server vs Client boundary issue?
+5. Did you paste the snapshot to ChatGPT?
 
-1. Is TLS disabled for this terminal session?
-2. Did Prisma client regenerate?
-3. Is auth bypass ON or OFF intentionally?
-4. Is this a server/client boundary issue?
-5. Did I provide ChatGPT a context snapshot?
 
----
-
-## 🧩 Optional Improvements (Future)
-
-* `scripts/dev.ps1` to automate TLS + dev startup
-* `/docs/dev.md` expanded onboarding guide
-* Startup warnings if TLS is not disabled
-* Feature-flag banners for other dev-only behavior
-
----
-
-**This file exists to protect future-you. Use it.**
-
----
-
-If you want next, I can:
-
-* Generate the `dev.ps1` script
-* Add a startup check that logs warnings if TLS isn’t set
-* Move on to the `/join/[token]` flow
-
-This is a *very* strong workflow foundation.

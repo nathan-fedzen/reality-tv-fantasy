@@ -10,7 +10,6 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url = env("DATABASE_URL")
 }
 
 enum ShowType {
@@ -30,34 +29,34 @@ enum LeagueRole {
   PLAYER
 }
 
-
 model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String?   @unique
-  emailVerified DateTime?
-  image         String?
-  accounts      Account[]
-  sessions      Session[]
-  leaguesCreated League[] @relation("LeaguesCreatedBy")
+  id             String         @id @default(cuid())
+  name           String?
+  email          String?        @unique
+  emailVerified  DateTime?
+  image          String?
+  accounts       Account[]
+  sessions       Session[]
+  leaguesCreated League[]       @relation("LeaguesCreatedBy")
   leagueMembers  LeagueMember[]
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  entries        LeagueEntry[] // ✅ ADD THIS
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
 }
 
 model Account {
-  id                 String  @id @default(cuid())
-  userId             String
-  type               String
-  provider           String
-  providerAccountId  String
-  refresh_token      String?
-  access_token       String?
-  expires_at         Int?
-  token_type         String?
-  scope              String?
-  id_token           String?
-  session_state      String?
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -82,51 +81,103 @@ model VerificationToken {
 }
 
 model League {
-  id           String           @id @default(cuid())
-  name         String
-  showType     ShowType
-  visibility   LeagueVisibility @default(PRIVATE)
-  maxPlayers   Int              @default(12)
+  id         String           @id @default(cuid())
+  name       String
+  showType   ShowType
+  visibility LeagueVisibility @default(PRIVATE)
+  maxPlayers Int              @default(12)
+
+  // --- Drag Race / season config (MVP) ---
+  seasonKey          String?
+  startsAt           DateTime?
+  submissionDeadline DateTime?
+  startedAt          DateTime? // manual override for testing: if set, league is considered started/revealed
 
   // who created it (not necessarily the only commissioner)
-  createdById  String
-  createdBy    User             @relation("LeaguesCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdById String
+  createdBy   User   @relation("LeaguesCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
 
   // timestamps
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // relations
-  members      LeagueMember[]
-  invites      LeagueInvite[]
+  members LeagueMember[]
+  invites LeagueInvite[]
+  entries LeagueEntry[] // NEW
 
   @@index([showType])
   @@index([createdById])
+  @@index([seasonKey]) // NEW (optional but useful)
 }
 
 model LeagueMember {
-  id        String     @id @default(cuid())
-  leagueId  String
-  userId    String
-  role      LeagueRole @default(PLAYER)
-  joinedAt  DateTime   @default(now())
+  id       String     @id @default(cuid())
+  leagueId String
+  userId   String
+  role     LeagueRole @default(PLAYER)
+  joinedAt DateTime   @default(now())
 
-  league    League     @relation(fields: [leagueId], references: [id], onDelete: Cascade)
-  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([leagueId, userId])
   @@index([userId])
 }
 
 model LeagueInvite {
-  id         String     @id @default(cuid())
-  leagueId   String
-  token      String     @unique
-  isActive   Boolean    @default(true)
-  expiresAt  DateTime?
-  createdAt  DateTime   @default(now())
+  id        String    @id @default(cuid())
+  leagueId  String
+  token     String    @unique
+  isActive  Boolean   @default(true)
+  expiresAt DateTime?
+  createdAt DateTime  @default(now())
 
-  league     League     @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
 
   @@index([leagueId])
+}
+
+model Queen {
+  id        String   @id @default(cuid())
+  seasonKey String
+  name      String
+  imageUrl  String?
+  createdAt DateTime @default(now())
+
+  picks LeagueEntryPick[] // ✅ ADD THIS
+
+  @@unique([seasonKey, name])
+  @@index([seasonKey])
+}
+
+model LeagueEntry {
+  id          String    @id @default(cuid())
+  leagueId    String
+  userId      String
+  submittedAt DateTime?
+  updatedAt   DateTime  @updatedAt
+  createdAt   DateTime  @default(now())
+
+  league League            @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  user   User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  picks  LeagueEntryPick[]
+
+  @@unique([leagueId, userId])
+  @@index([userId])
+  @@index([leagueId])
+}
+
+model LeagueEntryPick {
+  id         String  @id @default(cuid())
+  entryId    String
+  queenId    String
+  slot       Int // 1..4
+  multiplier Decimal @db.Decimal(3, 1) // 2.5, 2.0, 1.5, 1.0
+
+  entry LeagueEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  queen Queen       @relation(fields: [queenId], references: [id], onDelete: Restrict)
+
+  @@unique([entryId, slot])
+  @@index([queenId])
 }
