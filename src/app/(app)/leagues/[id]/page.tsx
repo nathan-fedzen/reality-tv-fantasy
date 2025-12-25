@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import CopyButton from "@/components/copy-button";
@@ -26,8 +27,6 @@ export default async function LeaguePage({
       members: { include: { user: { select: { email: true, name: true } } } },
       invites: { take: 1, orderBy: { createdAt: "desc" } },
     },
-    // ⬇️ ensure we have the fields needed for "started" logic
-    // (include already returns them, but this makes it explicit what we use)
   });
 
   if (!league) {
@@ -61,6 +60,16 @@ export default async function LeaguePage({
       <p className="mt-1 text-sm text-muted-foreground">
         {league.showType} • {league.visibility} • Max {league.maxPlayers}
       </p>
+
+      {/* ✅ Picks button */}
+      <div className="mt-4">
+        <Link
+          href={`/leagues/${league.id}/picks`}
+          className="inline-flex w-full items-center justify-center rounded-md bg-black px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+        >
+          {hasStarted ? "View Picks" : "Make Your Picks"}
+        </Link>
+      </div>
 
       <div className="mt-6 space-y-4">
         {/* ✅ Commissioner Tools */}
