@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import CopyButton from "@/components/copy-button";
 import DeleteLeagueButton from "@/components/delete-league-button";
 import InviteControls from "@/components/invite-controls";
+import StartLeagueButton from "@/components/start-league-button";
 
 export default async function LeaguePage({
   params,
@@ -25,6 +26,8 @@ export default async function LeaguePage({
       members: { include: { user: { select: { email: true, name: true } } } },
       invites: { take: 1, orderBy: { createdAt: "desc" } },
     },
+    // ⬇️ ensure we have the fields needed for "started" logic
+    // (include already returns them, but this makes it explicit what we use)
   });
 
   if (!league) {
@@ -44,6 +47,14 @@ export default async function LeaguePage({
 
   const isCreator = league.createdById === user.id;
 
+  // ✅ League started/reveal logic:
+  // - startedAt set by commissioner (testing)
+  // - OR now >= startsAt (premiere time)
+  const now = new Date();
+  const hasStarted =
+    league.startedAt !== null ||
+    (league.startsAt ? now >= league.startsAt : false);
+
   return (
     <main className="mx-auto w-full max-w-md p-4 pb-10">
       <h1 className="text-2xl font-semibold">{league.name}</h1>
@@ -52,6 +63,21 @@ export default async function LeaguePage({
       </p>
 
       <div className="mt-6 space-y-4">
+        {/* ✅ Commissioner Tools */}
+        {isCreator && !hasStarted && (
+          <div className="rounded-md border p-3 text-sm">
+            <div className="font-medium">Commissioner tools</div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Start the league early for testing/simulations. This will reveal
+              picks and lock editing.
+            </p>
+
+            <div className="mt-3">
+              <StartLeagueButton leagueId={league.id} />
+            </div>
+          </div>
+        )}
+
         <div className="rounded-md border p-3 text-sm">
           <div className="flex items-center justify-between">
             <div className="font-medium">Invite link</div>
