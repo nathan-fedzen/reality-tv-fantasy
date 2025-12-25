@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import LogoutButton from "@/components/logout-button";
 
 export const dynamic = "force-dynamic";
 
@@ -9,9 +10,6 @@ export default async function DashboardPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  // NOTE: In dev-bypass mode you return id: "dev-user".
-  // That user won't exist in DB, so this query will return 0 leagues.
-  // That's expected until you create a real dev user in DB, or disable bypass to test real data.
   const memberships = await prisma.leagueMember.findMany({
     where: { userId: user.id },
     select: {
@@ -40,10 +38,17 @@ export default async function DashboardPage() {
 
   return (
     <main className="mx-auto w-full max-w-md p-4 pb-10">
-      <h1 className="text-2xl font-semibold">Dashboard</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Your leagues and quick links.
-      </p>
+      {/* Header row */}
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold">Dashboard</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Your leagues and quick links.
+          </p>
+        </div>
+
+        <LogoutButton className="rounded-md border px-3 py-2 text-xs font-semibold" />
+      </div>
 
       <div className="mt-6 space-y-4">
         <div className="rounded-md border p-3 text-sm">
