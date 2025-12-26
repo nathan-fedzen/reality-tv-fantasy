@@ -107,9 +107,7 @@ export default function CreateLeagueForm() {
                                 <SelectValue placeholder="Select a show" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value={ShowType.SURVIVOR}>Survivor</SelectItem>
                                 <SelectItem value={ShowType.DRAG_RACE}>Drag Race</SelectItem>
-                                <SelectItem value={ShowType.GENERIC}>Generic</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
