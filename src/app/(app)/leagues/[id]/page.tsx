@@ -61,15 +61,31 @@ export default async function LeaguePage({
         {league.showType} • {league.visibility} • Max {league.maxPlayers}
       </p>
 
-      {/* ✅ Picks button */}
-      <div className="mt-4">
+      {/* ✅ Primary actions */}
+      <div className="mt-4 space-y-2">
         <Link
           href={`/leagues/${league.id}/picks`}
           className="inline-flex w-full items-center justify-center rounded-md bg-black px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
         >
           {hasStarted ? "View Picks" : "Make Your Picks"}
         </Link>
+
+        <Link
+          href={`/leagues/${league.id}/weeks`}
+          className="inline-flex w-full items-center justify-center rounded-md border px-4 py-2 text-sm font-medium hover:bg-zinc-50"
+        >
+          Weekly Results
+        </Link>
+        
+        <Link
+          href={`/leagues/${league.id}/leaderboard`}
+          className="inline-flex w-full items-center justify-center rounded-md border px-4 py-2 text-sm font-medium hover:bg-zinc-50"
+        >
+          Leaderboard
+        </Link>
+
       </div>
+
 
       <div className="mt-6 space-y-4">
         {/* ✅ Commissioner Tools */}

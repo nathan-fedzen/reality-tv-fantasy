@@ -106,6 +106,8 @@ model League {
   invites LeagueInvite[]
   entries LeagueEntry[] // NEW
 
+  episodes Episode[]
+
   @@index([showType])
   @@index([createdById])
   @@index([seasonKey]) // NEW (optional but useful)
@@ -145,7 +147,8 @@ model Queen {
   imageUrl  String?
   createdAt DateTime @default(now())
 
-  picks LeagueEntryPick[] // ✅ ADD THIS
+  picks          LeagueEntryPick[] // ✅ ADD THIS
+  episodeResults EpisodeResult[]
 
   @@unique([seasonKey, name])
   @@index([seasonKey])
@@ -159,9 +162,10 @@ model LeagueEntry {
   updatedAt   DateTime  @updatedAt
   createdAt   DateTime  @default(now())
 
-  league League            @relation(fields: [leagueId], references: [id], onDelete: Cascade)
-  user   User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  league League             @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  user   User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   picks  LeagueEntryPick[]
+  scores LeagueEntryScore[]
 
   @@unique([leagueId, userId])
   @@index([userId])
@@ -180,4 +184,48 @@ model LeagueEntryPick {
 
   @@unique([entryId, slot])
   @@index([queenId])
+}
+
+model Episode {
+  id        String   @id @default(cuid())
+  leagueId  String
+  week      Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  league  League             @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  results EpisodeResult[]
+  scores  LeagueEntryScore[]
+
+  @@unique([leagueId, week])
+  @@index([leagueId])
+}
+
+model EpisodeResult {
+  id        String   @id @default(cuid())
+  episodeId String
+  type      String // e.g. "mini", "main", "lipsync", "elimination"
+  queenId   String? // null allowed (used for "no elimination")
+  createdAt DateTime @default(now())
+
+  episode Episode @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  queen   Queen?  @relation(fields: [queenId], references: [id], onDelete: Restrict)
+
+  @@index([episodeId])
+  @@index([type])
+  @@index([queenId])
+}
+
+model LeagueEntryScore {
+  id            String  @id @default(cuid())
+  leagueEntryId String
+  episodeId     String
+  points        Decimal @db.Decimal(10, 2)
+
+  leagueEntry LeagueEntry @relation(fields: [leagueEntryId], references: [id], onDelete: Cascade)
+  episode     Episode     @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+
+  @@unique([leagueEntryId, episodeId])
+  @@index([episodeId])
+  @@index([leagueEntryId])
 }
