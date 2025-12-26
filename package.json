@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "postinstall": "prisma generate",
-    "build": "prisma migrate deploy && next build --webpack",
+    "build": "next build --webpack",
+    "migrate:deploy": "prisma migrate deploy",
     "dev": "next dev",
     "start": "next start",
     "lint": "eslint"
