@@ -1,6 +1,6 @@
 import "server-only";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth-options";
+import { authOptions } from "./auth_options";
 import { prisma } from "@/lib/prisma";
 
 export function getSession() {
