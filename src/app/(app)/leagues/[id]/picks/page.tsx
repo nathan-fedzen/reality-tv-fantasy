@@ -69,7 +69,7 @@ export default async function PicksPage({
 
   let entries: Array<{
     userId: string;
-    user: { name: string | null; email: string | null };
+    user: { displayName: string | null; name: string | null; email: string | null };
     picks: Array<{ slot: number; queenId: string }>;
   }> = [];
 
