@@ -127,4 +127,35 @@
   body {
     @apply bg-background text-foreground;
   }
+    /* Native form controls: make <select> dropdown readable in dark mode */
+  select {
+    background-color: var(--background);
+    color: var(--foreground);
+    color-scheme: light dark;
+  }
+
+  option,
+  optgroup {
+    background-color: var(--background);
+    color: var(--foreground);
+  }
+
+  /* Stronger overrides for Windows/Chrome native dropdown rendering */
+  .dark select {
+    background-color: var(--card);
+    color: var(--foreground);
+    color-scheme: dark;
+  }
+
+  .dark option,
+  .dark optgroup {
+    background-color: var(--card) !important;
+    color: var(--foreground) !important;
+  }
+
+
+  /* Some browsers need this on the select itself too */
+  select {
+    color-scheme: light dark;
+  }
 }

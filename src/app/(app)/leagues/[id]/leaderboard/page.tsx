@@ -60,7 +60,7 @@ export default async function LeaderboardPage({
   if (!league) return <main className="p-6">League not found.</main>;
 
   // ✅ IMPORTANT: route group / (app) typically maps to /app in the URL
-  const leagueHref = `/app/leagues/${league.id}`;
+  const leagueHref = `/leagues/${league.id}`;
 
   const entries = await prisma.leagueEntry.findMany({
     where: { leagueId },
@@ -279,7 +279,7 @@ export default async function LeaderboardPage({
           <section className="relative overflow-hidden rounded-3xl border border-border bg-card shadow-sm">
             <ConfettiBurst triggerKey={winnerKey} />
 
-            <div className="p-5">
+           <div className="relative z-10 p-5">
               <h2 className="text-base font-semibold flex items-center gap-2">
                 🏅 Podium
               </h2>
