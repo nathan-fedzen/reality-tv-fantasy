@@ -56,8 +56,9 @@ export default async function LeaguePage({
       <div className="mx-auto max-w-5xl px-4 sm:px-6 py-8 pb-12">
         {/* HERO */}
         <div className="relative overflow-hidden rounded-3xl border border-border bg-gradient-to-br from-primary/12 via-background to-secondary/12 p-6 shadow-sm">
-          <div className="absolute -top-16 -right-16 h-56 w-56 rounded-full bg-primary/20 blur-3xl" />
-          <div className="absolute -bottom-16 -left-16 h-56 w-56 rounded-full bg-secondary/20 blur-3xl" />
+          <div className="pointer-events-none absolute -top-16 -right-16 -z-10 h-56 w-56 rounded-full bg-primary/20 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-16 -left-16 -z-10 h-56 w-56 rounded-full bg-secondary/20 blur-3xl" />
+
 
           <div className="flex flex-col gap-4 sm:flex-row sm:justify-between">
             <div className="min-w-0">

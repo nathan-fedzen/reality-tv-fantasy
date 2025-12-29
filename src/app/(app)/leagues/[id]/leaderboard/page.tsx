@@ -6,10 +6,10 @@ import { Prisma } from "@prisma/client";
 import ConfettiBurst from "@/components/confetti-burst";
 
 function formatDisplayName(
-  user: { name: string | null; email: string | null },
+  user: { displayName?: string | null; name: string | null; email: string | null },
   fallback: string
 ) {
-  return user.name || user.email || fallback;
+  return user.displayName || user.name || user.email || fallback;
 }
 
 function toNumber(d: Prisma.Decimal | null | undefined) {
@@ -59,7 +59,6 @@ export default async function LeaderboardPage({
 
   if (!league) return <main className="p-6">League not found.</main>;
 
-  // ✅ IMPORTANT: route group / (app) typically maps to /app in the URL
   const leagueHref = `/leagues/${league.id}`;
 
   const entries = await prisma.leagueEntry.findMany({
@@ -68,7 +67,7 @@ export default async function LeaderboardPage({
       id: true,
       userId: true,
       createdAt: true,
-      user: { select: { name: true, email: true } },
+      user: { select: { displayName: true, name: true, email: true } },
       picks: {
         select: {
           slot: true,
@@ -245,31 +244,29 @@ export default async function LeaderboardPage({
   return (
     <main className="min-h-[calc(100vh-56px)] bg-background">
       <div className="mx-auto w-full max-w-5xl px-4 sm:px-6 py-8 pb-12 space-y-6">
-        {/* Header */}
-        <div className="relative overflow-hidden rounded-3xl border border-border bg-gradient-to-br from-primary/12 via-background to-secondary/12 p-6 shadow-sm">
-          <div className="pointer-events-none absolute -top-16 -right-16 h-56 w-56 rounded-full bg-primary/20 blur-3xl" />
-          <div className="pointer-events-none absolute -bottom-16 -left-16 h-56 w-56 rounded-full bg-secondary/20 blur-3xl" />
+        {/* Header (mobile-first) */}
+        <div className="relative overflow-hidden rounded-3xl border border-border bg-gradient-to-br from-primary/12 via-background to-secondary/12 p-5 sm:p-6 shadow-sm">
+          <div className="pointer-events-none absolute -top-16 -right-16 -z-10 h-56 w-56 rounded-full bg-primary/20 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-16 -left-16 -z-10 h-56 w-56 rounded-full bg-secondary/20 blur-3xl" />
 
-
-          <div className="relative z-10 flex items-start justify-between gap-4">
-            <div className="space-y-2 min-w-0">
+          <div className="relative z-10 flex items-start justify-between gap-3">
+            <div className="min-w-0 space-y-2">
               <div className="inline-flex items-center gap-2 rounded-full bg-background/70 px-3 py-1 text-xs font-semibold ring-1 ring-border">
                 🏆 Scoreboard
               </div>
-              <h1 className="text-2xl sm:text-3xl font-semibold truncate">
+              <h1 className="text-xl sm:text-3xl font-semibold truncate">
                 Leaderboard
               </h1>
-              <p className="text-sm text-muted-foreground truncate">
+              <p className="text-xs sm:text-sm text-muted-foreground truncate">
                 {league.name}
               </p>
             </div>
 
-            {/* ✅ FIXED */}
             <Link
               href={leagueHref}
-              className="rounded-full border border-border bg-card px-4 py-2 text-sm font-semibold hover:bg-accent transition"
+              className="shrink-0 rounded-full border border-border bg-card px-3 py-2 text-sm font-semibold hover:bg-accent transition"
             >
-              ← Back to league
+              ← Back
             </Link>
           </div>
         </div>
@@ -279,7 +276,7 @@ export default async function LeaderboardPage({
           <section className="relative overflow-hidden rounded-3xl border border-border bg-card shadow-sm">
             <ConfettiBurst triggerKey={winnerKey} />
 
-           <div className="relative z-10 p-5">
+            <div className="relative z-10 p-5">
               <h2 className="text-base font-semibold flex items-center gap-2">
                 🏅 Podium
               </h2>
@@ -297,8 +294,8 @@ export default async function LeaderboardPage({
                     place === 1
                       ? "from-primary/20 to-secondary/10"
                       : place === 2
-                        ? "from-secondary/20 to-primary/10"
-                        : "from-muted to-background";
+                      ? "from-secondary/20 to-primary/10"
+                      : "from-muted to-background";
 
                   return (
                     <div
@@ -342,7 +339,7 @@ export default async function LeaderboardPage({
         ) : (
           <div className="rounded-3xl border border-border bg-card shadow-sm overflow-hidden">
             <div className="p-5 flex items-start justify-between gap-3">
-              <div>
+              <div className="min-w-0">
                 <h2 className="text-base font-semibold flex items-center gap-2">
                   🎭 Standings
                 </h2>
@@ -352,7 +349,7 @@ export default async function LeaderboardPage({
                 </p>
               </div>
 
-              <span className="rounded-full bg-primary/15 text-primary px-2.5 py-1 text-xs font-semibold ring-1 ring-primary/25">
+              <span className="shrink-0 rounded-full bg-primary/15 text-primary px-2.5 py-1 text-xs font-semibold ring-1 ring-primary/25">
                 Live
               </span>
             </div>
@@ -363,120 +360,130 @@ export default async function LeaderboardPage({
                   r.rank === 1
                     ? "bg-gradient-to-r from-primary/15 to-transparent"
                     : r.rank === 2
-                      ? "bg-gradient-to-r from-secondary/15 to-transparent"
-                      : r.rank === 3
-                        ? "bg-gradient-to-r from-muted to-transparent"
-                        : "";
+                    ? "bg-gradient-to-r from-secondary/15 to-transparent"
+                    : r.rank === 3
+                    ? "bg-gradient-to-r from-muted to-transparent"
+                    : "";
 
                 const delta = r.deltaRank;
                 const movement =
                   delta == null
                     ? { text: "—", cls: "text-muted-foreground" }
                     : delta > 0
-                      ? { text: `▲ ${delta}`, cls: "text-success font-semibold" }
-                      : delta < 0
-                        ? {
-                          text: `▼ ${Math.abs(delta)}`,
-                          cls: "text-destructive font-semibold",
-                        }
-                        : { text: "• 0", cls: "text-muted-foreground font-semibold" };
+                    ? { text: `▲ ${delta}`, cls: "text-success font-semibold" }
+                    : delta < 0
+                    ? {
+                        text: `▼ ${Math.abs(delta)}`,
+                        cls: "text-destructive font-semibold",
+                      }
+                    : { text: "• 0", cls: "text-muted-foreground font-semibold" };
 
                 return (
                   <div
                     key={r.entryId}
                     className={[
-                      "px-5 py-4 transition",
+                      "px-4 sm:px-5 py-4 transition",
                       "hover:bg-accent/60",
                       topStyle,
                       "border-b border-border last:border-b-0",
                     ].join(" ")}
                   >
+                    {/* Mobile-first row header (stacked) */}
                     <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex items-center gap-3">
-                        <div className="w-10 shrink-0 text-center">
+                      <div className="min-w-0 flex items-start gap-3">
+                        {/* Rank badge */}
+                        <div className="shrink-0">
                           <div className="inline-flex h-9 w-9 items-center justify-center rounded-2xl bg-background/70 ring-1 ring-border font-extrabold tabular-nums">
                             {r.rank}
                           </div>
                         </div>
 
-                        <div className="h-10 w-10 rounded-2xl bg-gradient-to-br from-primary/20 to-secondary/20 ring-1 ring-border flex items-center justify-center font-bold">
-                          {initials(r.displayName)}
-                        </div>
-
+                        {/* Name block */}
                         <div className="min-w-0">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <div className="truncate text-sm font-semibold">
-                              {r.displayName}
-                            </div>
-                            {r.rank === 1 && (
-                              <span className="rounded-full bg-warning/20 px-2 py-0.5 text-[11px] font-semibold">
-                                👑 front-runner
-                              </span>
-                            )}
+                          <div className="truncate text-sm font-semibold">
+                            {r.displayName}
                           </div>
-
                           {r.email && (
                             <div className="truncate text-xs text-muted-foreground">
                               {r.email}
                             </div>
                           )}
+
+                          {/* Badges row (wraps) */}
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                            {/* Hide avatar on mobile; looks cramped */}
+                            <span className="inline-flex sm:hidden rounded-full bg-background/60 px-2 py-0.5 text-xs font-semibold ring-1 ring-border">
+                              {initials(r.displayName)}
+                            </span>
+
+                            {r.rank === 1 && (
+                              <span className="rounded-full bg-warning/20 px-2 py-0.5 text-[11px] font-semibold">
+                                👑 front-runner
+                              </span>
+                            )}
+
+                            <span
+                              className={[
+                                "rounded-full bg-muted px-2 py-0.5 text-xs font-semibold tabular-nums",
+                                movement.cls,
+                              ].join(" ")}
+                            >
+                              {movement.text}{" "}
+                              <span className="text-muted-foreground font-medium">
+                                vs last week
+                              </span>
+                            </span>
+                          </div>
                         </div>
                       </div>
 
-                      <div className="text-right">
+                      {/* Score block */}
+                      <div className="shrink-0 text-right">
                         <div className="text-xs text-muted-foreground">Total</div>
-                        <div className="text-2xl font-extrabold tabular-nums">
+                        <div className="text-2xl font-extrabold tabular-nums leading-tight">
                           {r.totalPoints.toFixed(2)}
                         </div>
-
-                        <div
-                          className={[
-                            "mt-1 text-xs tabular-nums",
-                            movement.cls,
-                          ].join(" ")}
-                        >
-                          {movement.text}{" "}
-                          <span className="text-muted-foreground">
-                            vs last week
-                          </span>
-                        </div>
+                        <div className="text-xs text-muted-foreground">pts</div>
                       </div>
                     </div>
 
-                    <div className="mt-4 grid gap-2">
+                    {/* Picks */}
+                    <div className="mt-4 space-y-2">
                       {r.picks.map((p) => (
                         <div
                           key={p.slot}
                           className={[
-                            "flex items-center justify-between rounded-2xl border border-border bg-background/60 px-3 py-2 text-sm transition",
+                            "rounded-2xl border border-border bg-background/60 px-3 py-2 text-sm transition",
                             "hover:bg-background",
-                            p.eliminated ? "opacity-60" : "",
+                            p.eliminated ? "opacity-70" : "",
                           ].join(" ")}
                         >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="text-xs font-semibold text-muted-foreground">
-                              Slot {p.slot}
-                            </span>
-
-                            <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold">
-                              {p.multiplier}x
-                            </span>
-
-                            {p.eliminated && (
-                              <span className="rounded-full bg-destructive/15 text-destructive px-2 py-0.5 text-xs font-semibold ring-1 ring-destructive/25">
-                                ☠ eliminated
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0 flex items-center gap-2">
+                              <span className="text-xs font-semibold text-muted-foreground">
+                                Slot {p.slot}
                               </span>
-                            )}
-                          </div>
 
-                          <div
-                            className={[
-                              "font-medium truncate max-w-[60%] text-right",
-                              p.eliminated ? "line-through" : "",
-                            ].join(" ")}
-                            title={p.queenName}
-                          >
-                            {p.queenName}
+                              <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold">
+                                {p.multiplier}x
+                              </span>
+
+                              {p.eliminated && (
+                                <span className="rounded-full bg-destructive/15 text-destructive px-2 py-0.5 text-xs font-semibold ring-1 ring-destructive/25">
+                                  ☠ eliminated
+                                </span>
+                              )}
+                            </div>
+
+                            <div
+                              className={[
+                                "truncate text-right font-medium max-w-[65%]",
+                                p.eliminated ? "line-through" : "",
+                              ].join(" ")}
+                              title={p.queenName}
+                            >
+                              {p.queenName}
+                            </div>
                           </div>
                         </div>
                       ))}

@@ -29,9 +29,21 @@ enum LeagueRole {
   PLAYER
 }
 
+enum LeagueStatus {
+  DRAFT
+  ACTIVE
+  COMPLETE
+}
+
+enum EpisodeType {
+  REGULAR
+  FINALE
+}
+
 model User {
   id             String         @id @default(cuid())
   name           String?
+  displayName    String? // ✅ new
   email          String?        @unique
   emailVerified  DateTime?
   image          String?
@@ -85,6 +97,7 @@ model League {
   name       String
   showType   ShowType
   visibility LeagueVisibility @default(PRIVATE)
+  status     LeagueStatus     @default(DRAFT)
   maxPlayers Int              @default(12)
 
   // --- Drag Race / season config (MVP) ---
@@ -150,6 +163,9 @@ model Queen {
   picks          LeagueEntryPick[] // ✅ ADD THIS
   episodeResults EpisodeResult[]
 
+  finalePlacements EpisodeFinalePlacement[]
+  finaleExtras     EpisodeFinaleExtra[]
+
   @@unique([seasonKey, name])
   @@index([seasonKey])
 }
@@ -187,15 +203,20 @@ model LeagueEntryPick {
 }
 
 model Episode {
-  id        String   @id @default(cuid())
-  leagueId  String
-  week      Int
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String      @id @default(cuid())
+  leagueId    String
+  week        Int
+  episodeType EpisodeType @default(REGULAR) // ✅ NEW
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
 
   league  League             @relation(fields: [leagueId], references: [id], onDelete: Cascade)
   results EpisodeResult[]
   scores  LeagueEntryScore[]
+
+  // ✅ NEW (finale-only data)
+  finalePlacements EpisodeFinalePlacement[]
+  finaleExtras     EpisodeFinaleExtra[]
 
   @@unique([leagueId, week])
   @@index([leagueId])
@@ -213,6 +234,35 @@ model EpisodeResult {
 
   @@index([episodeId])
   @@index([type])
+  @@index([queenId])
+}
+
+model EpisodeFinalePlacement {
+  id        String @id @default(cuid())
+  episodeId String
+  queenId   String
+  place     Int // 1..4
+
+  episode Episode @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  queen   Queen   @relation(fields: [queenId], references: [id], onDelete: Restrict)
+
+  @@unique([episodeId, place]) // ✅ prevents two queens being "1st"
+  @@unique([episodeId, queenId]) // ✅ prevents same queen twice
+  @@index([queenId])
+}
+
+model EpisodeFinaleExtra {
+  id          String @id @default(cuid())
+  episodeId   String
+  queenId     String
+  miniWins    Int    @default(0)
+  mainWins    Int    @default(0)
+  lipsyncWins Int    @default(0) // ✅ NEW (supports multiple finale lipsyncs)
+
+  episode Episode @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  queen   Queen   @relation(fields: [queenId], references: [id], onDelete: Restrict)
+
+  @@unique([episodeId, queenId])
   @@index([queenId])
 }
 

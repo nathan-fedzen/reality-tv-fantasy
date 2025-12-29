@@ -12,7 +12,14 @@ export default async function AppLayout({
 
   return (
     <div className="min-h-screen">
-      <AppNav userName={user.name ?? user.email ?? "User"} />
+      <AppNav
+        userName={
+          user.displayName ||
+          user.name ||
+          user.email ||
+          "Account"
+        }
+      />
       <div className="mx-auto max-w-5xl p-6">{children}</div>
     </div>
   );

@@ -43,16 +43,20 @@ export default async function WeekPage({
   // Load existing episode + results (if any)
   const episode = await prisma.episode.findUnique({
     where: { leagueId_week: { leagueId: league.id, week: weekNum } },
-    include: { results: true },
+    include: {
+      results: true,
+      finalePlacements: true,
+      finaleExtras: true,
+    },
   });
 
   // Load queens for the season (Drag Race)
   const queens =
     league.seasonKey
       ? await prisma.queen.findMany({
-          where: { seasonKey: league.seasonKey },
-          orderBy: { name: "asc" },
-        })
+        where: { seasonKey: league.seasonKey },
+        orderBy: { name: "asc" },
+      })
       : [];
 
   return (
@@ -81,6 +85,9 @@ export default async function WeekPage({
             week={weekNum}
             queens={queens.map((q) => ({ id: q.id, name: q.name }))}
             existingResults={episode?.results ?? []}
+            episodeType={episode?.episodeType ?? "REGULAR"}
+            existingFinalePlacements={episode?.finalePlacements ?? []}
+            existingFinaleExtras={episode?.finaleExtras ?? []}
             isCommissioner={isCommissioner}
             hasStarted={hasStarted}
           />

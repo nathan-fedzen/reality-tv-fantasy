@@ -62,7 +62,7 @@ export default async function PicksPage({
     select: {
       id: true,
       userId: true,
-      user: { select: { name: true, email: true } },
+      user: { select: { displayName: true, name: true, email: true } },
       picks: { select: { slot: true, queenId: true } },
     },
   });
@@ -78,7 +78,7 @@ export default async function PicksPage({
       where: { leagueId },
       select: {
         userId: true,
-        user: { select: { name: true, email: true } },
+        user: { select: { displayName: true, name: true, email: true } },
         picks: { select: { slot: true, queenId: true } },
       },
       orderBy: { createdAt: "asc" },
