@@ -25,7 +25,28 @@ function devBypassEnabled() {
 export async function getCurrentUser(): Promise<AppUser | null> {
   if (devBypassEnabled()) {
     const email = process.env.DEV_AUTH_EMAIL ?? "dev@nathan.local";
-    return { id: "dev-user", email, name: "Dev User", displayName: "Dev User" };
+    const devUser = await prisma.user.upsert({
+      where: { email },
+      update: {
+        name: "Dev User",
+        displayName: "Dev User",
+      },
+      create: {
+        email,
+        name: "Dev User",
+        displayName: "Dev User",
+      },
+      select: { id: true, email: true, name: true, displayName: true },
+    });
+
+    if (!devUser.email) return null;
+
+    return {
+      id: devUser.id,
+      email: devUser.email,
+      name: devUser.name,
+      displayName: devUser.displayName ?? null,
+    };
   }
 
   const session = await getSession();

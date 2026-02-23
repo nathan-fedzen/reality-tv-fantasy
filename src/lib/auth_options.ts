@@ -16,21 +16,35 @@ export const authOptions: NextAuthOptions = {
         if (!from) throw new Error("Missing EMAIL_FROM");
         if (!process.env.RESEND_API_KEY) throw new Error("Missing RESEND_API_KEY");
 
-        await resend.emails.send({
-          from,
-          to: identifier,
-          subject: "Sign in to Reality TV Fantasy",
-          html: `
-          <div style="font-family: ui-sans-serif, system-ui; line-height: 1.5;">
-            <h2>Sign in</h2>
-            <p>Click the link below to sign in:</p>
-            <p><a href="${url}">${url}</a></p>
-            <p style="color:#666;font-size:12px;">
-              If you didn’t request this, you can ignore this email.
-            </p>
-          </div>
-        `,
-        });
+        try {
+          const response = await resend.emails.send({
+            from,
+            to: identifier,
+            subject: "Sign in to Reality TV Fantasy",
+            html: `
+            <div style="font-family: ui-sans-serif, system-ui; line-height: 1.5;">
+              <h2>Sign in</h2>
+              <p>Click the link below to sign in:</p>
+              <p><a href="${url}">${url}</a></p>
+              <p style="color:#666;font-size:12px;">
+                If you didn't request this, you can ignore this email.
+              </p>
+            </div>
+          `,
+          });
+
+          if (response.error) {
+            throw new Error(response.error.message || "Unknown Resend error");
+          }
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "Unknown error";
+          console.error("Failed to send magic link email", {
+            to: identifier,
+            from,
+            message,
+          });
+          throw new Error(`Magic link email failed: ${message}`);
+        }
       },
     }),
   ],
