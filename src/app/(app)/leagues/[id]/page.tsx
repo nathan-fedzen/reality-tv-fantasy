@@ -125,7 +125,7 @@ export default async function LeaguePage({
               href={`/leagues/${league.id}/picks`}
               className="rounded-full border border-border bg-card px-4 py-1.5 text-sm font-semibold hover:bg-accent transition"
             >
-              🎮 Picks
+              {league.showType === "SURVIVOR" ? "Draft" : "Picks"}
             </Link>
             <Link
               href={`/leagues/${league.id}/weeks`}
@@ -228,3 +228,4 @@ export default async function LeaguePage({
     </main>
   );
 }
+
