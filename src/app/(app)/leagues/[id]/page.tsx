@@ -26,6 +26,10 @@ export default async function LeaguePage({
     include: {
       members: { include: { user: { select: { email: true, name: true } } } },
       invites: { take: 1, orderBy: { createdAt: "desc" } },
+      survivorCastaways: {
+        select: { id: true, name: true, tribe: true },
+        orderBy: { name: "asc" },
+      },
     },
   });
 
@@ -155,6 +159,34 @@ export default async function LeaguePage({
                 </li>
               ))}
             </ul>
+
+            {league.showType === "SURVIVOR" && (
+              <div className="mt-5">
+                <h3 className="text-sm font-semibold text-muted-foreground">
+                  Survivor 50 Cast ({league.survivorCastaways.length})
+                </h3>
+
+                {league.survivorCastaways.length === 0 ? (
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    No castaways seeded yet.
+                  </p>
+                ) : (
+                  <ul className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+                    {league.survivorCastaways.map((castaway) => (
+                      <li
+                        key={castaway.id}
+                        className="flex items-center justify-between rounded-xl border border-border bg-background/60 px-3 py-2"
+                      >
+                        <span className="truncate">{castaway.name}</span>
+                        <span className="text-xs font-semibold text-muted-foreground">
+                          {castaway.tribe ?? "Unassigned"}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
           </section>
 
           {/* INVITES */}

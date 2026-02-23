@@ -7,7 +7,7 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    // IMPORTANT: use pooler/runtime connection here
-    url: env("DATABASE_URL"),
+    // Migrations should use DIRECT_URL when available; fallback keeps local setup working.
+    url: process.env.DIRECT_URL ?? env("DATABASE_URL"),
   },
 });

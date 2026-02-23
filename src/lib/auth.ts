@@ -15,10 +15,11 @@ export type AppUser = {
 };
 
 function devBypassEnabled() {
-  return (
-    process.env.NODE_ENV === "development" &&
-    process.env.DEV_AUTH_BYPASS === "true"
-  );
+  const raw =
+    process.env.DEV_AUTH_BYPASS ?? process.env.NEXT_PUBLIC_DEV_AUTH_BYPASS;
+  const enabled = raw?.trim().toLowerCase() === "true";
+
+  return process.env.NODE_ENV !== "production" && enabled;
 }
 
 export async function getCurrentUser(): Promise<AppUser | null> {

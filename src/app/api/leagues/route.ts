@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { LeagueVisibility, ShowType } from "@prisma/client";
 import { v4 as uuidv4 } from "uuid";
 import { RPDR_S18 } from "@/lib/drag-race/s18";
+import { SURVIVOR_50 } from "@/lib/survivor/s50";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -82,39 +83,58 @@ export async function POST(req: Request) {
     await seedDragRaceSeason();
   }
 
+  if (body.showType === "SURVIVOR") {
+    seasonKey = SURVIVOR_50.seasonKey;
+  }
+
   const token = uuidv4();
 
-  const league = await prisma.league.create({
-    data: {
-      name,
-      showType: body.showType,
-      visibility: body.visibility,
-      maxPlayers,
-      createdById: user.id,
+  const result = await prisma.$transaction(async (tx) => {
+    const league = await tx.league.create({
+      data: {
+        name,
+        showType: body.showType,
+        visibility: body.visibility,
+        maxPlayers,
+        createdById: user.id,
 
-      // These are only relevant for DRAG_RACE (safe to pass undefined otherwise)
-      seasonKey,
-      startsAt,
-      submissionDeadline,
+        // These are only relevant for DRAG_RACE (safe to pass undefined otherwise)
+        seasonKey,
+        startsAt,
+        submissionDeadline,
 
-      members: {
-        create: {
-          userId: user.id,
-          role: "COMMISSIONER",
+        members: {
+          create: {
+            userId: user.id,
+            role: "COMMISSIONER",
+          },
         },
       },
-    },
-    select: { id: true },
+      select: { id: true },
+    });
+
+    if (body.showType === "SURVIVOR") {
+      await tx.survivorCastaway.createMany({
+        data: SURVIVOR_50.castaways.map((castaway) => ({
+          leagueId: league.id,
+          name: castaway.name,
+          tribe: castaway.tribe,
+        })),
+        skipDuplicates: true,
+      });
+    }
+
+    const invite = await tx.leagueInvite.create({
+      data: {
+        leagueId: league.id,
+        token,
+        isActive: true,
+      },
+      select: { token: true },
+    });
+
+    return { leagueId: league.id, inviteToken: invite.token };
   });
 
-  const invite = await prisma.leagueInvite.create({
-    data: {
-      leagueId: league.id,
-      token,
-      isActive: true,
-    },
-    select: { token: true },
-  });
-
-  return NextResponse.json({ id: league.id, inviteToken: invite.token }, { status: 201 });
+  return NextResponse.json({ id: result.leagueId, inviteToken: result.inviteToken }, { status: 201 });
 }

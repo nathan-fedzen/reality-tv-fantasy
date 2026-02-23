@@ -51,10 +51,11 @@ export default function CreateLeagueForm() {
 
     // Read raw text first (prevents silent JSON parsing failures)
     const raw = await res.text();
-    let data: any = null;
+    let data: { id?: string; error?: string } | null = null;
 
     try {
-      data = raw ? JSON.parse(raw) : null;
+      const parsed: unknown = raw ? JSON.parse(raw) : null;
+      data = parsed && typeof parsed === "object" ? (parsed as { id?: string; error?: string }) : null;
     } catch {
       data = null;
     }
@@ -107,6 +108,7 @@ export default function CreateLeagueForm() {
                                 <SelectValue placeholder="Select a show" />
                             </SelectTrigger>
                             <SelectContent>
+                                <SelectItem value={ShowType.SURVIVOR}>Survivor</SelectItem>
                                 <SelectItem value={ShowType.DRAG_RACE}>Drag Race</SelectItem>
                             </SelectContent>
                         </Select>

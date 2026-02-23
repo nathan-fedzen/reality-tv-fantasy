@@ -1,9 +1,12 @@
 "use client";
 
 export default function DevModeBanner() {
+  const bypassEnabled =
+    process.env.NEXT_PUBLIC_DEV_AUTH_BYPASS?.trim().toLowerCase() === "true";
+
   if (
-    process.env.NODE_ENV !== "development" ||
-    process.env.NEXT_PUBLIC_DEV_AUTH_BYPASS !== "true"
+    process.env.NODE_ENV === "production" ||
+    !bypassEnabled
   ) {
     return null;
   }
