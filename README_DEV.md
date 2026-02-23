@@ -5,6 +5,8 @@
 
 ### 1) Start local dev (Windows / PowerShell)
 
+
+Little test
 ```powershell
 $env:NODE_TLS_REJECT_UNAUTHORIZED="0"
 npm run dev
