@@ -12,12 +12,6 @@ datasource db {
   provider = "postgresql"
 }
 
-enum ShowType {
-  SURVIVOR
-  DRAG_RACE
-  GENERIC
-}
-
 enum LeagueVisibility {
   PUBLIC
   PRIVATE
@@ -38,6 +32,170 @@ enum LeagueStatus {
 enum EpisodeType {
   REGULAR
   FINALE
+}
+
+enum ShowType {
+  SURVIVOR
+  DRAG_RACE
+  GENERIC
+  TRAITORS
+}
+
+enum TraitorsElimination {
+  NONE
+  MURDERED
+  BANISHED
+}
+
+enum TraitorsFantasyRole {
+  FAITHFUL
+  TRAITOR
+}
+
+enum TraitorsVoteType {
+  BANISHMENT
+  MURDER
+}
+
+enum MemberEffectType {
+  NEXT_EPISODE_ZERO
+  FORCE_MULTIPLIER_ONE
+  BANISHMENT_IMMUNITY
+}
+
+enum MessageChannel {
+  GENERAL
+  TRAITORS
+}
+
+model TraitorsPlayer {
+  id        String   @id @default(cuid())
+  leagueId  String
+  name      String
+  imageUrl  String?
+  createdAt DateTime @default(now())
+
+  league  League                        @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  results TraitorsEpisodePlayerResult[]
+
+  picks TraitorsEntryPick[]
+
+  @@unique([leagueId, name])
+  @@index([leagueId])
+}
+
+model TraitorsEpisodePlayerResult {
+  id        String @id @default(cuid())
+  episodeId String
+  playerId  String
+
+  elimination   TraitorsElimination @default(NONE)
+  gotShield     Boolean             @default(false) // at most 1 per episode
+  isShowTraitor Boolean             @default(false) // +1 if true
+
+  episode Episode        @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  player  TraitorsPlayer @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([episodeId, playerId])
+  @@index([episodeId])
+  @@index([playerId])
+}
+
+model TraitorsEntryPick {
+  id        String   @id @default(cuid())
+  entryId   String
+  playerId  String
+  slot      Int // 1..5
+  createdAt DateTime @default(now())
+
+  entry  LeagueEntry    @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  player TraitorsPlayer @relation(fields: [playerId], references: [id], onDelete: Restrict)
+
+  @@unique([entryId, slot])
+  @@unique([entryId, playerId])
+  @@index([playerId])
+  @@index([entryId])
+}
+
+model TraitorsFantasyRolePeriod {
+  id             String @id @default(cuid())
+  leagueId       String
+  leagueMemberId String
+
+  role TraitorsFantasyRole
+
+  startsEpisodeId String
+  endsEpisodeId   String?
+
+  league League       @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  member LeagueMember @relation(fields: [leagueMemberId], references: [id], onDelete: Cascade)
+
+  startsEpisode Episode  @relation("TraitorsRoleStarts", fields: [startsEpisodeId], references: [id], onDelete: Cascade)
+  endsEpisode   Episode? @relation("TraitorsRoleEnds", fields: [endsEpisodeId], references: [id], onDelete: SetNull)
+
+  @@index([leagueId])
+  @@index([leagueMemberId])
+}
+
+model TraitorsVote {
+  id        String           @id @default(cuid())
+  leagueId  String
+  episodeId String
+  type      TraitorsVoteType
+
+  voterMemberId  String
+  targetMemberId String
+
+  createdAt DateTime @default(now())
+
+  league  League       @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  episode Episode      @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  voter   LeagueMember @relation("TraitorsVoteVoter", fields: [voterMemberId], references: [id], onDelete: Cascade)
+  target  LeagueMember @relation("TraitorsVoteTarget", fields: [targetMemberId], references: [id], onDelete: Cascade)
+
+  @@unique([episodeId, type, voterMemberId])
+  @@index([episodeId, type])
+  @@index([targetMemberId])
+}
+
+model MemberEffect {
+  id             String @id @default(cuid())
+  leagueId       String
+  leagueMemberId String
+
+  type            MemberEffectType
+  startsEpisodeId String
+  endsEpisodeId   String
+
+  createdAt DateTime @default(now())
+
+  league League       @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  member LeagueMember @relation(fields: [leagueMemberId], references: [id], onDelete: Cascade)
+
+  startsEpisode Episode @relation("EffectStarts", fields: [startsEpisodeId], references: [id], onDelete: Cascade)
+  endsEpisode   Episode @relation("EffectEnds", fields: [endsEpisodeId], references: [id], onDelete: Cascade)
+
+  @@index([leagueId])
+  @@index([leagueMemberId])
+  @@index([startsEpisodeId])
+  @@index([endsEpisodeId])
+}
+
+model LeagueMessage {
+  id             String  @id @default(cuid())
+  leagueId       String
+  episodeId      String? // optional thread-per-episode
+  authorMemberId String
+
+  channel   MessageChannel @default(GENERAL)
+  body      String
+  createdAt DateTime       @default(now())
+
+  league League       @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  author LeagueMember @relation(fields: [authorMemberId], references: [id], onDelete: Cascade)
+
+  @@index([leagueId, channel])
+  @@index([episodeId])
 }
 
 model User {
@@ -121,6 +279,12 @@ model League {
 
   episodes Episode[]
 
+  traitorsPlayers        TraitorsPlayer[]
+  traitorsFantasyPeriods TraitorsFantasyRolePeriod[]
+  traitorsVotes          TraitorsVote[]
+  memberEffects          MemberEffect[]
+  messages               LeagueMessage[]
+
   @@index([showType])
   @@index([createdById])
   @@index([seasonKey]) // NEW (optional but useful)
@@ -135,6 +299,14 @@ model LeagueMember {
 
   league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  traitorsFantasyPeriods TraitorsFantasyRolePeriod[]
+
+  traitorsVotesCast     TraitorsVote[] @relation("TraitorsVoteVoter")
+  traitorsVotesReceived TraitorsVote[] @relation("TraitorsVoteTarget")
+
+  memberEffects    MemberEffect[]
+  messagesAuthored LeagueMessage[]
 
   @@unique([leagueId, userId])
   @@index([userId])
@@ -183,6 +355,8 @@ model LeagueEntry {
   picks  LeagueEntryPick[]
   scores LeagueEntryScore[]
 
+  traitorsPicks TraitorsEntryPick[]
+
   @@unique([leagueId, userId])
   @@index([userId])
   @@index([leagueId])
@@ -217,6 +391,26 @@ model Episode {
   // ✅ NEW (finale-only data)
   finalePlacements EpisodeFinalePlacement[]
   finaleExtras     EpisodeFinaleExtra[]
+
+  hasMurder     Boolean @default(false)
+  hasBanishment Boolean @default(false)
+
+  lockedAt DateTime?
+
+  banishmentVoteOpensAt  DateTime?
+  banishmentVoteClosesAt DateTime?
+
+  murderVoteOpensAt  DateTime?
+  murderVoteClosesAt DateTime?
+
+  traitorsPlayerResults TraitorsEpisodePlayerResult[]
+  traitorsVotes         TraitorsVote[]
+
+  traitorsRoleStarts TraitorsFantasyRolePeriod[] @relation("TraitorsRoleStarts")
+  traitorsRoleEnds   TraitorsFantasyRolePeriod[] @relation("TraitorsRoleEnds")
+
+  effectStarts MemberEffect[] @relation("EffectStarts")
+  effectEnds   MemberEffect[] @relation("EffectEnds")
 
   @@unique([leagueId, week])
   @@index([leagueId])
@@ -271,6 +465,7 @@ model LeagueEntryScore {
   leagueEntryId String
   episodeId     String
   points        Decimal @db.Decimal(10, 2)
+  breakdown     Json?
 
   leagueEntry LeagueEntry @relation(fields: [leagueEntryId], references: [id], onDelete: Cascade)
   episode     Episode     @relation(fields: [episodeId], references: [id], onDelete: Cascade)

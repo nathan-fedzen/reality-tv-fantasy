@@ -7,6 +7,7 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    url: env("DIRECT_URL"),
+    // IMPORTANT: use pooler/runtime connection here
+    url: env("DATABASE_URL"),
   },
 });
