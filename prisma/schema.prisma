@@ -68,6 +68,52 @@ enum MessageChannel {
   TRAITORS
 }
 
+enum SurvivorDraftStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETE
+}
+
+enum SurvivorAuctionType {
+  HIDDEN_BID
+  LIVE
+}
+
+enum SurvivorAuctionStatus {
+  SCHEDULED
+  OPEN
+  CLOSED
+  RESOLVED
+}
+
+enum SurvivorAdvantageType {
+  DOUBLE_EPISODE
+  PREDICTION_SHIELD
+  IDOL_INSURANCE
+  VOTE_STEAL
+  REVIVAL_TOKEN
+  BOOT_BLOCK
+  EXTRA_PREDICTION
+}
+
+enum SurvivorAdvantageStatus {
+  ACTIVE
+  USED
+  EXPIRED
+}
+
+enum SurvivorPointSource {
+  PERFORMANCE
+  PREDICTION
+  BOOT_ORDER
+  AUCTION_SPEND
+  AUCTION_REFUND
+  ADVANTAGE_AWARD
+  ADVANTAGE_EFFECT
+  LAST_SURVIVOR_STANDING
+  ADMIN_ADJUSTMENT
+}
+
 model TraitorsPlayer {
   id        String   @id @default(cuid())
   leagueId  String
@@ -285,6 +331,16 @@ model League {
   memberEffects          MemberEffect[]
   messages               LeagueMessage[]
 
+  survivorCastaways         SurvivorCastaway[]
+  survivorDraft             SurvivorDraft?
+  survivorEpisodeMeta       SurvivorEpisodeMeta[]
+  survivorEpisodeResults    SurvivorEpisodeCastawayResult[]
+  survivorPredictions       SurvivorWeeklyPrediction[]
+  survivorBootOrder         SurvivorBootOrderSubmission[]
+  survivorAuctions          SurvivorAuction[]
+  survivorOwnedAdvantages   SurvivorOwnedAdvantage[]
+  survivorPointTransactions SurvivorPointTransaction[]
+
   @@index([showType])
   @@index([createdById])
   @@index([seasonKey]) // NEW (optional but useful)
@@ -342,6 +398,311 @@ model Queen {
   @@index([seasonKey])
 }
 
+model SurvivorCastaway {
+  id        String   @id @default(cuid())
+  leagueId  String
+  name      String
+  tribe     String?
+  imageUrl  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+
+  draftPicks                   SurvivorDraftPick[]
+  episodeResults               SurvivorEpisodeCastawayResult[]
+  bootPredictions              SurvivorWeeklyPrediction[] @relation("SurvivorPredictionBoot")
+  immunityPredictions          SurvivorWeeklyPrediction[] @relation("SurvivorPredictionImmunityWinner")
+  safePredictions              SurvivorWeeklyPrediction[] @relation("SurvivorPredictionSafePick")
+  episodeMetasAsBoot           SurvivorEpisodeMeta[]      @relation("SurvivorEpisodeBoot")
+  episodeMetasAsImmunityWinner SurvivorEpisodeMeta[]      @relation("SurvivorEpisodeImmunityWinner")
+  bootOrderItems               SurvivorBootOrderItem[]
+
+  @@unique([leagueId, name])
+  @@index([leagueId])
+}
+
+model SurvivorDraft {
+  id                 String              @id @default(cuid())
+  leagueId           String              @unique
+  status             SurvivorDraftStatus @default(NOT_STARTED)
+  picksPerEntry      Int?
+  totalRounds        Int?
+  totalPicks         Int?
+  currentOverallPick Int?
+  startedAt          DateTime?
+  completedAt        DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+
+  seats SurvivorDraftSeat[]
+  picks SurvivorDraftPick[]
+}
+
+model SurvivorDraftSeat {
+  id            String   @id @default(cuid())
+  draftId       String
+  leagueEntryId String
+  seat          Int
+  createdAt     DateTime @default(now())
+
+  draft       SurvivorDraft @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  leagueEntry LeagueEntry   @relation(fields: [leagueEntryId], references: [id], onDelete: Cascade)
+
+  @@unique([draftId, seat])
+  @@unique([draftId, leagueEntryId])
+  @@index([leagueEntryId])
+}
+
+model SurvivorDraftPick {
+  id            String   @id @default(cuid())
+  draftId       String
+  leagueEntryId String
+  castawayId    String
+  round         Int
+  overallPick   Int
+  pickInRound   Int
+  createdAt     DateTime @default(now())
+
+  draft       SurvivorDraft    @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  leagueEntry LeagueEntry      @relation(fields: [leagueEntryId], references: [id], onDelete: Cascade)
+  castaway    SurvivorCastaway @relation(fields: [castawayId], references: [id], onDelete: Restrict)
+
+  @@unique([draftId, overallPick])
+  @@unique([draftId, castawayId])
+  @@unique([draftId, leagueEntryId, round])
+  @@index([leagueEntryId])
+  @@index([castawayId])
+}
+
+model SurvivorEpisodeMeta {
+  id                       String   @id @default(cuid())
+  leagueId                 String
+  episodeId                String   @unique
+  isMerge                  Boolean  @default(false)
+  isNonElimination         Boolean  @default(false)
+  wasIdolPlayed            Boolean  @default(false)
+  shotInTheDarkPlayed      Boolean  @default(false)
+  hadTribeSwap             Boolean  @default(false)
+  bootCastawayId           String?
+  bootVoteCount            Int?
+  immunityWinnerCastawayId String?
+  lockedAt                 DateTime?
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  league                 League            @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  episode                Episode           @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  bootCastaway           SurvivorCastaway? @relation("SurvivorEpisodeBoot", fields: [bootCastawayId], references: [id], onDelete: SetNull)
+  immunityWinnerCastaway SurvivorCastaway? @relation("SurvivorEpisodeImmunityWinner", fields: [immunityWinnerCastawayId], references: [id], onDelete: SetNull)
+
+  @@index([leagueId])
+  @@index([bootCastawayId])
+  @@index([immunityWinnerCastawayId])
+}
+
+model SurvivorEpisodeCastawayResult {
+  id                      String   @id @default(cuid())
+  leagueId                String
+  episodeId               String
+  castawayId              String
+  survived                Boolean  @default(true)
+  eliminated              Boolean  @default(false)
+  individualImmunityWins  Int      @default(0)
+  individualRewardWins    Int      @default(0)
+  advantagesFound         Int      @default(0)
+  idolsPlayedSuccessfully Int      @default(0)
+  votesReceived           Int      @default(0)
+  confessionalLeader      Boolean  @default(false)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  league   League          @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  episode  Episode         @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  castaway SurvivorCastaway @relation(fields: [castawayId], references: [id], onDelete: Restrict)
+
+  @@unique([episodeId, castawayId])
+  @@index([leagueId])
+  @@index([castawayId])
+}
+
+model SurvivorWeeklyPrediction {
+  id                       String   @id @default(cuid())
+  leagueId                 String
+  episodeId                String
+  leagueEntryId            String
+  bootCastawayId           String?
+  bootVoteCount            Int?
+  immunityWinnerCastawayId String?
+  idolPlayed               Boolean?
+  safePickCastawayId       String?
+  shotInTheDarkPlayed      Boolean?
+  tribeSwapHappens         Boolean?
+  nonEliminationEpisode    Boolean?
+  submittedAt              DateTime @default(now())
+  scoredAt                 DateTime?
+  points                   Decimal  @default(0) @db.Decimal(10, 2)
+  breakdown                Json?
+
+  league                 League            @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  episode                Episode           @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  leagueEntry            LeagueEntry       @relation(fields: [leagueEntryId], references: [id], onDelete: Cascade)
+  bootCastaway           SurvivorCastaway? @relation("SurvivorPredictionBoot", fields: [bootCastawayId], references: [id], onDelete: SetNull)
+  immunityWinnerCastaway SurvivorCastaway? @relation("SurvivorPredictionImmunityWinner", fields: [immunityWinnerCastawayId], references: [id], onDelete: SetNull)
+  safePickCastaway       SurvivorCastaway? @relation("SurvivorPredictionSafePick", fields: [safePickCastawayId], references: [id], onDelete: SetNull)
+
+  @@unique([episodeId, leagueEntryId])
+  @@index([leagueId])
+  @@index([leagueEntryId])
+}
+
+model SurvivorBootOrderSubmission {
+  id             String   @id @default(cuid())
+  leagueId       String
+  leagueEntryId  String   @unique
+  mergeEpisodeId String?
+  submittedAt    DateTime @default(now())
+  lockedAt       DateTime?
+  scoredAt       DateTime?
+  points         Decimal  @default(0) @db.Decimal(10, 2)
+  breakdown      Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  league       League      @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  leagueEntry  LeagueEntry @relation(fields: [leagueEntryId], references: [id], onDelete: Cascade)
+  mergeEpisode Episode?    @relation("SurvivorBootOrderMergeEpisode", fields: [mergeEpisodeId], references: [id], onDelete: SetNull)
+
+  items SurvivorBootOrderItem[]
+
+  @@index([leagueId])
+  @@index([mergeEpisodeId])
+}
+
+model SurvivorBootOrderItem {
+  id                String @id @default(cuid())
+  submissionId      String
+  castawayId        String
+  predictedPosition Int
+
+  submission SurvivorBootOrderSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  castaway   SurvivorCastaway            @relation(fields: [castawayId], references: [id], onDelete: Restrict)
+
+  @@unique([submissionId, predictedPosition])
+  @@unique([submissionId, castawayId])
+  @@index([castawayId])
+}
+
+model SurvivorAuction {
+  id         String               @id @default(cuid())
+  leagueId   String
+  name       String
+  type       SurvivorAuctionType   @default(HIDDEN_BID)
+  status     SurvivorAuctionStatus @default(SCHEDULED)
+  opensAt    DateTime?
+  closesAt   DateTime?
+  resolvedAt DateTime?
+  createdAt  DateTime              @default(now())
+  updatedAt  DateTime              @updatedAt
+
+  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+
+  lots SurvivorAuctionLot[]
+  bids SurvivorAuctionBid[]
+
+  @@index([leagueId])
+}
+
+model SurvivorAuctionLot {
+  id            String                @id @default(cuid())
+  auctionId     String
+  advantageType SurvivorAdvantageType
+  title         String
+  description   String?
+  quantity      Int                   @default(1)
+  startingBid   Decimal               @default(0) @db.Decimal(10, 2)
+  createdAt     DateTime              @default(now())
+
+  auction SurvivorAuction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+
+  bids            SurvivorAuctionBid[]
+  ownedAdvantages SurvivorOwnedAdvantage[]
+
+  @@index([auctionId])
+}
+
+model SurvivorAuctionBid {
+  id            String   @id @default(cuid())
+  auctionId     String
+  lotId         String
+  leagueEntryId String
+  amount        Decimal  @db.Decimal(10, 2)
+  isWinning     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  auction     SurvivorAuction   @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  lot         SurvivorAuctionLot @relation(fields: [lotId], references: [id], onDelete: Cascade)
+  leagueEntry LeagueEntry       @relation(fields: [leagueEntryId], references: [id], onDelete: Cascade)
+
+  @@index([auctionId])
+  @@index([lotId])
+  @@index([leagueEntryId])
+  @@index([auctionId, lotId])
+}
+
+model SurvivorOwnedAdvantage {
+  id                   String                  @id @default(cuid())
+  leagueId             String
+  leagueEntryId        String
+  lotId                String?
+  advantageType        SurvivorAdvantageType
+  title                String
+  status               SurvivorAdvantageStatus @default(ACTIVE)
+  awardedAt            DateTime                @default(now())
+  usedAt               DateTime?
+  expiresEpisodeId     String?
+  lastAppliedEpisodeId String?
+  effectConfig         Json?
+
+  league           League       @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  leagueEntry      LeagueEntry  @relation(fields: [leagueEntryId], references: [id], onDelete: Cascade)
+  lot              SurvivorAuctionLot? @relation(fields: [lotId], references: [id], onDelete: SetNull)
+  expiresEpisode   Episode?     @relation("SurvivorAdvantageExpiresEpisode", fields: [expiresEpisodeId], references: [id], onDelete: SetNull)
+  lastAppliedEpisode Episode?   @relation("SurvivorAdvantageLastAppliedEpisode", fields: [lastAppliedEpisodeId], references: [id], onDelete: SetNull)
+
+  pointTransactions SurvivorPointTransaction[]
+
+  @@index([leagueId])
+  @@index([leagueEntryId])
+  @@index([expiresEpisodeId])
+  @@index([lastAppliedEpisodeId])
+}
+
+model SurvivorPointTransaction {
+  id               String              @id @default(cuid())
+  leagueId         String
+  leagueEntryId    String
+  episodeId        String?
+  ownedAdvantageId String?
+  source           SurvivorPointSource
+  amount           Decimal             @db.Decimal(10, 2)
+  reason           String?
+  metadata         Json?
+  createdAt        DateTime            @default(now())
+
+  league         League                   @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  leagueEntry    LeagueEntry              @relation(fields: [leagueEntryId], references: [id], onDelete: Cascade)
+  episode        Episode?                 @relation(fields: [episodeId], references: [id], onDelete: SetNull)
+  ownedAdvantage SurvivorOwnedAdvantage?  @relation(fields: [ownedAdvantageId], references: [id], onDelete: SetNull)
+
+  @@index([leagueId])
+  @@index([leagueEntryId])
+  @@index([episodeId])
+  @@index([source])
+}
+
 model LeagueEntry {
   id          String    @id @default(cuid())
   leagueId    String
@@ -356,6 +717,13 @@ model LeagueEntry {
   scores LeagueEntryScore[]
 
   traitorsPicks TraitorsEntryPick[]
+  survivorDraftSeats        SurvivorDraftSeat[]
+  survivorDraftPicks        SurvivorDraftPick[]
+  survivorPredictions       SurvivorWeeklyPrediction[]
+  survivorBootOrder         SurvivorBootOrderSubmission?
+  survivorAuctionBids       SurvivorAuctionBid[]
+  survivorOwnedAdvantages   SurvivorOwnedAdvantage[]
+  survivorPointTransactions SurvivorPointTransaction[]
 
   @@unique([leagueId, userId])
   @@index([userId])
@@ -405,6 +773,14 @@ model Episode {
 
   traitorsPlayerResults TraitorsEpisodePlayerResult[]
   traitorsVotes         TraitorsVote[]
+
+  survivorMeta                  SurvivorEpisodeMeta?
+  survivorCastawayResults       SurvivorEpisodeCastawayResult[]
+  survivorPredictions           SurvivorWeeklyPrediction[]
+  survivorBootOrderSubmissions  SurvivorBootOrderSubmission[] @relation("SurvivorBootOrderMergeEpisode")
+  survivorAdvantageExpirations  SurvivorOwnedAdvantage[]      @relation("SurvivorAdvantageExpiresEpisode")
+  survivorAdvantageApplications SurvivorOwnedAdvantage[]      @relation("SurvivorAdvantageLastAppliedEpisode")
+  survivorPointTransactions     SurvivorPointTransaction[]
 
   traitorsRoleStarts TraitorsFantasyRolePeriod[] @relation("TraitorsRoleStarts")
   traitorsRoleEnds   TraitorsFantasyRolePeriod[] @relation("TraitorsRoleEnds")
