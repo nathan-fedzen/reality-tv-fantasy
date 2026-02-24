@@ -1,9 +1,49 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Prisma } from "@prisma/client";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import DragRaceWeekForm from "@/components/commissioner/drag-race-week-form";
 import SurvivorWeekForm from "@/components/commissioner/survivor-week-form";
+
+type DragEpisodeWithResults = Prisma.EpisodeGetPayload<{
+  select: {
+    id: true;
+    episodeType: true;
+    results: true;
+    finalePlacements: true;
+    finaleExtras: true;
+  };
+}>;
+
+type SurvivorEpisodeWithResults = Prisma.EpisodeGetPayload<{
+  select: {
+    id: true;
+    survivorMeta: {
+      select: {
+        isMerge: true;
+        isNonElimination: true;
+        bootCastawayId: true;
+        bootVoteCount: true;
+        immunityWinnerCastawayId: true;
+      };
+    };
+    survivorCastawayResults: {
+      select: {
+        castawayId: true;
+        survived: true;
+        eliminated: true;
+        individualImmunityWins: true;
+        individualRewardWins: true;
+        advantagesFound: true;
+        idolsPlayedSuccessfully: true;
+        votesReceived: true;
+        confessionalLeader: true;
+        endgamePlacement: true;
+      };
+    };
+  };
+}>;
 
 export default async function WeekPage({
   params,
@@ -41,28 +81,62 @@ export default async function WeekPage({
 
   const isCommissioner = league.createdById === user.id;
 
-  const dragEpisode =
-    league.showType === "DRAG_RACE"
-      ? await prisma.episode.findUnique({
-          where: { leagueId_week: { leagueId: league.id, week: weekNum } },
-          include: {
-            results: true,
-            finalePlacements: true,
-            finaleExtras: true,
-          },
-        })
-      : null;
+  let schemaMismatch = false;
+  let dragEpisode: DragEpisodeWithResults | null = null;
+  let survivorEpisode: SurvivorEpisodeWithResults | null = null;
 
-  const survivorEpisode =
-    league.showType === "SURVIVOR"
-      ? await prisma.episode.findUnique({
-          where: { leagueId_week: { leagueId: league.id, week: weekNum } },
-          include: {
-            survivorMeta: true,
-            survivorCastawayResults: true,
+  try {
+    if (league.showType === "DRAG_RACE") {
+      dragEpisode = await prisma.episode.findUnique({
+        where: { leagueId_week: { leagueId: league.id, week: weekNum } },
+        select: {
+          id: true,
+          episodeType: true,
+          results: true,
+          finalePlacements: true,
+          finaleExtras: true,
+        },
+      });
+    }
+
+    if (league.showType === "SURVIVOR") {
+      survivorEpisode = await prisma.episode.findUnique({
+        where: { leagueId_week: { leagueId: league.id, week: weekNum } },
+        select: {
+          id: true,
+          survivorMeta: {
+            select: {
+              isMerge: true,
+              isNonElimination: true,
+              bootCastawayId: true,
+              bootVoteCount: true,
+              immunityWinnerCastawayId: true,
+            },
           },
-        })
-      : null;
+          survivorCastawayResults: {
+            select: {
+              castawayId: true,
+              survived: true,
+              eliminated: true,
+              individualImmunityWins: true,
+              individualRewardWins: true,
+              advantagesFound: true,
+              idolsPlayedSuccessfully: true,
+              votesReceived: true,
+              confessionalLeader: true,
+              endgamePlacement: true,
+            },
+          },
+        },
+      });
+    }
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2022") {
+      schemaMismatch = true;
+    } else {
+      throw err;
+    }
+  }
 
   const queens =
     league.seasonKey && league.showType === "DRAG_RACE"
@@ -99,7 +173,14 @@ export default async function WeekPage({
         </div>
       )}
 
-      {league.showType === "DRAG_RACE" ? (
+      {schemaMismatch && (
+        <div className="mt-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          This environment is missing one or more database columns for weekly results.
+          Run `npx prisma migrate deploy` for production, then redeploy.
+        </div>
+      )}
+
+      {!schemaMismatch && league.showType === "DRAG_RACE" ? (
         <div className="mt-6">
           <DragRaceWeekForm
             leagueId={league.id}
@@ -113,7 +194,7 @@ export default async function WeekPage({
             hasStarted={hasStarted}
           />
         </div>
-      ) : league.showType === "SURVIVOR" ? (
+      ) : !schemaMismatch && league.showType === "SURVIVOR" ? (
         <div className="mt-6">
           <SurvivorWeekForm
             leagueId={league.id}

@@ -64,14 +64,43 @@ export async function GET(
     league.showType === "SURVIVOR"
       ? await prisma.episode.findUnique({
           where: { leagueId_week: { leagueId: id, week: weekNum } },
-          include: {
-            survivorMeta: true,
-            survivorCastawayResults: true,
+          select: {
+            id: true,
+            week: true,
+            leagueId: true,
+            survivorMeta: {
+              select: {
+                isMerge: true,
+                isNonElimination: true,
+                bootCastawayId: true,
+                bootVoteCount: true,
+                immunityWinnerCastawayId: true,
+                lockedAt: true,
+              },
+            },
+            survivorCastawayResults: {
+              select: {
+                castawayId: true,
+                survived: true,
+                eliminated: true,
+                individualImmunityWins: true,
+                individualRewardWins: true,
+                advantagesFound: true,
+                idolsPlayedSuccessfully: true,
+                votesReceived: true,
+                confessionalLeader: true,
+                endgamePlacement: true,
+              },
+            },
           },
         })
       : await prisma.episode.findUnique({
           where: { leagueId_week: { leagueId: id, week: weekNum } },
-          include: {
+          select: {
+            id: true,
+            week: true,
+            leagueId: true,
+            episodeType: true,
             results: true,
           },
         });
