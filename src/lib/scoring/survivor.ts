@@ -2,6 +2,7 @@ import { Prisma, PrismaClient } from "@prisma/client";
 import {
   SURVIVOR_V1_RULES,
   survivorEndgamePlacementPoints,
+  survivorPredictionPointsCapped,
 } from "@/lib/survivor/survivor-rules";
 
 type Tx = Omit<
@@ -14,14 +15,19 @@ export async function recomputeSurvivorWeekScores(
   leagueId: string,
   episodeId: string
 ) {
-  const [episode, entries, draftPicks, castawayResults] = await Promise.all([
+  const [episode, entries, draftPicks, castawayResults, predictions] = await Promise.all([
     tx.episode.findUnique({
       where: { id: episodeId },
       select: {
         id: true,
+        week: true,
         survivorMeta: {
           select: {
             isMerge: true,
+            isNonElimination: true,
+            bootCastawayId: true,
+            bootVoteCount: true,
+            immunityWinnerCastawayId: true,
           },
         },
       },
@@ -53,11 +59,28 @@ export async function recomputeSurvivorWeekScores(
         endgamePlacement: true,
       },
     }),
+    tx.survivorWeeklyPrediction.findMany({
+      where: { leagueId, episodeId },
+      select: {
+        id: true,
+        leagueEntryId: true,
+        bootCastawayId: true,
+        bootVoteCount: true,
+        immunityWinnerCastawayId: true,
+        idolPlayed: true,
+        safePickCastawayId: true,
+      },
+    }),
   ]);
 
   if (!episode) return;
 
   const isMergeEpisode = !!episode.survivorMeta?.isMerge;
+  const actualBootCastawayId = episode.survivorMeta?.bootCastawayId ?? null;
+  const actualBootVoteCount = episode.survivorMeta?.bootVoteCount ?? null;
+  const actualImmunityWinnerCastawayId =
+    episode.survivorMeta?.immunityWinnerCastawayId ?? null;
+  const actualIdolPlayed = castawayResults.some((row) => row.idolsPlayedSuccessfully > 0);
 
   await tx.leagueEntryScore.deleteMany({ where: { episodeId } });
 
@@ -75,13 +98,21 @@ export async function recomputeSurvivorWeekScores(
   const resultByCastawayId = new Map(
     castawayResults.map((row) => [row.castawayId, row])
   );
+  const predictionByEntryId = new Map(
+    predictions.map((prediction) => [prediction.leagueEntryId, prediction])
+  );
 
   const rows: Prisma.LeagueEntryScoreCreateManyInput[] = [];
+  const predictionUpdates: Array<{
+    id: string;
+    points: Prisma.Decimal;
+    breakdown: Prisma.InputJsonValue;
+  }> = [];
 
   for (const entry of entries) {
     const roster = rosterByEntry.get(entry.id) ?? [];
 
-    let total = new Prisma.Decimal(0);
+    let performanceTotal = 0;
     const perCastaway: Array<{
       castawayId: string;
       castawayName: string;
@@ -156,7 +187,7 @@ export async function recomputeSurvivorWeekScores(
         points.eliminated +
         points.endgamePlacement;
 
-      total = total.add(new Prisma.Decimal(subtotal));
+      performanceTotal += subtotal;
 
       perCastaway.push({
         castawayId: castaway.castawayId,
@@ -166,17 +197,105 @@ export async function recomputeSurvivorWeekScores(
       });
     }
 
+    const prediction = predictionByEntryId.get(entry.id) ?? null;
+    let predictionSubtotal = 0;
+    let predictionCapped = 0;
+    let predictionBreakdown: Prisma.InputJsonObject | null = null;
+
+    if (prediction) {
+      const predictionPoints = {
+        bootCastawayExact:
+          prediction.bootCastawayId === actualBootCastawayId
+            ? SURVIVOR_V1_RULES.weeklyPredictions.bootCastawayExact
+            : 0,
+        bootVoteCountExact:
+          prediction.bootVoteCount != null &&
+          actualBootVoteCount != null &&
+          prediction.bootVoteCount === actualBootVoteCount
+            ? SURVIVOR_V1_RULES.weeklyPredictions.bootVoteCountExact
+            : 0,
+        immunityWinnerExact:
+          prediction.immunityWinnerCastawayId != null &&
+          actualImmunityWinnerCastawayId != null &&
+          prediction.immunityWinnerCastawayId === actualImmunityWinnerCastawayId
+            ? SURVIVOR_V1_RULES.weeklyPredictions.immunityWinnerExact
+            : 0,
+        idolPlayedYesNo:
+          prediction.idolPlayed != null && prediction.idolPlayed === actualIdolPlayed
+            ? SURVIVOR_V1_RULES.weeklyPredictions.idolPlayedYesNo
+            : 0,
+        safePickSurvives:
+          prediction.safePickCastawayId != null &&
+          (resultByCastawayId.get(prediction.safePickCastawayId)?.eliminated ?? true) === false
+            ? SURVIVOR_V1_RULES.weeklyPredictions.safePickSurvives
+            : 0,
+      };
+
+      predictionSubtotal =
+        predictionPoints.bootCastawayExact +
+        predictionPoints.bootVoteCountExact +
+        predictionPoints.immunityWinnerExact +
+        predictionPoints.idolPlayedYesNo +
+        predictionPoints.safePickSurvives;
+      predictionCapped = survivorPredictionPointsCapped(predictionSubtotal);
+
+      predictionBreakdown = {
+        points: predictionPoints,
+        rawPoints: predictionSubtotal,
+        cappedPoints: predictionCapped,
+        maxPoints: SURVIVOR_V1_RULES.weeklyPredictions.maxPoints,
+        actual: {
+          bootCastawayId: actualBootCastawayId,
+          bootVoteCount: actualBootVoteCount,
+          immunityWinnerCastawayId: actualImmunityWinnerCastawayId,
+          idolPlayed: actualIdolPlayed,
+          isNonEliminationEpisode: !!episode.survivorMeta?.isNonElimination,
+        },
+      };
+
+      predictionUpdates.push({
+        id: prediction.id,
+        points: new Prisma.Decimal(predictionCapped),
+        breakdown: predictionBreakdown,
+      });
+    }
+
+    const total = performanceTotal + predictionCapped;
+
     rows.push({
       leagueEntryId: entry.id,
       episodeId,
-      points: total,
+      points: new Prisma.Decimal(total),
       breakdown: {
-        ruleset: "SURVIVOR_V1_PERFORMANCE",
+        ruleset: "SURVIVOR_V1",
+        week: episode.week,
         isMergeEpisode,
         perCastaway,
-        total: Number(total.toString()),
+        performanceTotal,
+        predictions: prediction
+          ? {
+              submitted: true,
+              ...predictionBreakdown,
+            }
+          : { submitted: false, rawPoints: 0, cappedPoints: 0 },
+        total,
       },
     });
+  }
+
+  if (predictionUpdates.length) {
+    await Promise.all(
+      predictionUpdates.map((prediction) =>
+        tx.survivorWeeklyPrediction.update({
+          where: { id: prediction.id },
+          data: {
+            points: prediction.points,
+            scoredAt: new Date(),
+            breakdown: prediction.breakdown,
+          },
+        })
+      )
+    );
   }
 
   if (rows.length) {

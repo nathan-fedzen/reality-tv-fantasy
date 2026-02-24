@@ -5,6 +5,8 @@ import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import DragRaceWeekForm from "@/components/commissioner/drag-race-week-form";
 import SurvivorWeekForm from "@/components/commissioner/survivor-week-form";
+import SurvivorWeeklyPredictionForm from "@/components/survivor/weekly-prediction-form";
+import { survivorWeekPredictionLockAt } from "@/lib/survivor/survivor-rules";
 
 type DragEpisodeWithResults = Prisma.EpisodeGetPayload<{
   select: {
@@ -19,6 +21,7 @@ type DragEpisodeWithResults = Prisma.EpisodeGetPayload<{
 type SurvivorEpisodeWithResults = Prisma.EpisodeGetPayload<{
   select: {
     id: true;
+    lockedAt: true;
     survivorMeta: {
       select: {
         isMerge: true;
@@ -26,6 +29,7 @@ type SurvivorEpisodeWithResults = Prisma.EpisodeGetPayload<{
         bootCastawayId: true;
         bootVoteCount: true;
         immunityWinnerCastawayId: true;
+        lockedAt: true;
       };
     };
     survivorCastawayResults: {
@@ -84,6 +88,17 @@ export default async function WeekPage({
   let schemaMismatch = false;
   let dragEpisode: DragEpisodeWithResults | null = null;
   let survivorEpisode: SurvivorEpisodeWithResults | null = null;
+  let mySurvivorPrediction: {
+    id: string;
+    bootCastawayId: string | null;
+    bootVoteCount: number | null;
+    immunityWinnerCastawayId: string | null;
+    idolPlayed: boolean | null;
+    safePickCastawayId: string | null;
+    submittedAt: Date;
+    scoredAt: Date | null;
+    points: Prisma.Decimal;
+  } | null = null;
 
   try {
     if (league.showType === "DRAG_RACE") {
@@ -104,6 +119,7 @@ export default async function WeekPage({
         where: { leagueId_week: { leagueId: league.id, week: weekNum } },
         select: {
           id: true,
+          lockedAt: true,
           survivorMeta: {
             select: {
               isMerge: true,
@@ -111,6 +127,7 @@ export default async function WeekPage({
               bootCastawayId: true,
               bootVoteCount: true,
               immunityWinnerCastawayId: true,
+              lockedAt: true,
             },
           },
           survivorCastawayResults: {
@@ -129,6 +146,40 @@ export default async function WeekPage({
           },
         },
       });
+
+      const myEntry = await prisma.leagueEntry.findUnique({
+        where: {
+          leagueId_userId: {
+            leagueId: league.id,
+            userId: user.id,
+          },
+        },
+        select: { id: true },
+      });
+
+      if (myEntry) {
+        mySurvivorPrediction = await prisma.survivorWeeklyPrediction.findFirst({
+          where: {
+            leagueId: league.id,
+            leagueEntryId: myEntry.id,
+            episode: {
+              leagueId: league.id,
+              week: weekNum,
+            },
+          },
+          select: {
+            id: true,
+            bootCastawayId: true,
+            bootVoteCount: true,
+            immunityWinnerCastawayId: true,
+            idolPlayed: true,
+            safePickCastawayId: true,
+            submittedAt: true,
+            scoredAt: true,
+            points: true,
+          },
+        });
+      }
     }
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2022") {
@@ -154,6 +205,18 @@ export default async function WeekPage({
           select: { id: true, name: true, tribe: true },
         })
       : [];
+
+  const survivorPredictionLockAt =
+    league.showType === "SURVIVOR"
+      ? survivorWeekPredictionLockAt(league.startsAt, weekNum, survivorEpisode?.lockedAt ?? null)
+      : null;
+
+  const survivorPredictionLocked =
+    league.showType === "SURVIVOR"
+      ? !!mySurvivorPrediction ||
+        !!survivorEpisode?.survivorMeta?.lockedAt ||
+        (survivorPredictionLockAt ? now >= survivorPredictionLockAt : false)
+      : false;
 
   return (
     <main className="mx-auto w-full max-w-md p-4 pb-10">
@@ -195,7 +258,7 @@ export default async function WeekPage({
           />
         </div>
       ) : !schemaMismatch && league.showType === "SURVIVOR" ? (
-        <div className="mt-6">
+        <div className="mt-6 space-y-4">
           <SurvivorWeekForm
             leagueId={league.id}
             week={weekNum}
@@ -226,6 +289,31 @@ export default async function WeekPage({
             }))}
             isCommissioner={isCommissioner}
             hasStarted={hasStarted}
+          />
+          <SurvivorWeeklyPredictionForm
+            leagueId={league.id}
+            week={weekNum}
+            castaways={castaways}
+            existingPrediction={
+              mySurvivorPrediction
+                ? {
+                    id: mySurvivorPrediction.id,
+                    bootCastawayId: mySurvivorPrediction.bootCastawayId,
+                    bootVoteCount: mySurvivorPrediction.bootVoteCount,
+                    immunityWinnerCastawayId:
+                      mySurvivorPrediction.immunityWinnerCastawayId,
+                    idolPlayed: mySurvivorPrediction.idolPlayed,
+                    safePickCastawayId: mySurvivorPrediction.safePickCastawayId,
+                    submittedAt: mySurvivorPrediction.submittedAt.toISOString(),
+                    scoredAt: mySurvivorPrediction.scoredAt
+                      ? mySurvivorPrediction.scoredAt.toISOString()
+                      : null,
+                    points: Number(mySurvivorPrediction.points.toString()),
+                  }
+                : null
+            }
+            lockAtIso={survivorPredictionLockAt?.toISOString() ?? null}
+            isLocked={survivorPredictionLocked}
           />
         </div>
       ) : (
