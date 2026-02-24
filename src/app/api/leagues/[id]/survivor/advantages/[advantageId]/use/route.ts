@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { SURVIVOR_SEASON_WEEKS } from "@/lib/survivor/season";
 
 type UseAdvantagePayload = {
   week: number;
@@ -38,6 +39,12 @@ export async function POST(
   if (!league) return NextResponse.json({ error: "League not found." }, { status: 404 });
   if (league.showType !== "SURVIVOR") {
     return NextResponse.json({ error: "Survivor-only route." }, { status: 400 });
+  }
+  if (week > SURVIVOR_SEASON_WEEKS) {
+    return NextResponse.json(
+      { error: `week must be between 1 and ${SURVIVOR_SEASON_WEEKS}.` },
+      { status: 400 }
+    );
   }
   if (league.members.length === 0) return NextResponse.json({ error: "Forbidden." }, { status: 403 });
 
@@ -118,4 +125,3 @@ export async function POST(
     return NextResponse.json({ error: "Failed to use advantage." }, { status: 500 });
   }
 }
-

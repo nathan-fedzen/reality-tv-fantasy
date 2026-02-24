@@ -2,8 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-
-const SURVIVOR_SEASON_WEEKS = 13;
+import { SURVIVOR_SEASON_WEEKS } from "@/lib/survivor/season";
 
 export default async function SurvivorCommissionerUpdatesIndexPage({
   params,
@@ -58,7 +57,8 @@ export default async function SurvivorCommissionerUpdatesIndexPage({
       </div>
 
       <p className="mt-3 text-sm text-muted-foreground">
-        Select a week to enter official Survivor results. This season is set to 13 weeks.
+        Select a week to enter official Survivor results. This season is set to{" "}
+        {SURVIVOR_SEASON_WEEKS} weeks.
       </p>
 
       <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">

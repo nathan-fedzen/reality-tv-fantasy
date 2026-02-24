@@ -134,6 +134,14 @@ export default async function LeaguePage({
                 Player Guide
               </Link>
             )}
+            {league.showType === "SURVIVOR" && (
+              <Link
+                href={`/leagues/${league.id}/auction`}
+                className="rounded-full border border-border bg-card px-4 py-1.5 text-sm font-semibold transition hover:bg-accent"
+              >
+                Auction House
+              </Link>
+            )}
             {league.showType === "SURVIVOR" && isCreator && (
               <Link
                 href={`/leagues/${league.id}/commissioner-updates`}

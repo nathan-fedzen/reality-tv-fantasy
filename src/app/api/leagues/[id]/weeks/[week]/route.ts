@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { recomputeDragRaceWeekScores } from "@/lib/scoring/drag-race";
 import { recomputeSurvivorWeekScores } from "@/lib/scoring/survivor";
+import { SURVIVOR_SEASON_WEEKS } from "@/lib/survivor/season";
 
 type DragRaceWeekPayload = {
   miniWinners: string[];
@@ -105,6 +106,9 @@ export async function GET(
     select: { showType: true },
   });
   if (!league) return NextResponse.json({ error: "League not found" }, { status: 404 });
+  if (league.showType === "SURVIVOR" && weekNum > SURVIVOR_SEASON_WEEKS) {
+    return NextResponse.json({ error: "Invalid week" }, { status: 400 });
+  }
 
   const episode =
     league.showType === "SURVIVOR"
@@ -187,6 +191,9 @@ export async function PUT(
     });
 
     if (!league) return NextResponse.json({ error: "League not found" }, { status: 404 });
+    if (league.showType === "SURVIVOR" && weekNum > SURVIVOR_SEASON_WEEKS) {
+      return NextResponse.json({ error: "Invalid week" }, { status: 400 });
+    }
 
     const isCommissioner = league.createdById === user.id;
     if (!isCommissioner) {

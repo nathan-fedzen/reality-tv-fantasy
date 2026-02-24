@@ -64,6 +64,7 @@ export async function GET(
       id: true,
       showType: true,
       createdById: true,
+      survivorAuctionActivatedAt: true,
       members: { where: { userId: user.id }, select: { id: true } },
     },
   });
@@ -77,6 +78,10 @@ export async function GET(
   }
 
   const isCommissioner = league.createdById === user.id;
+  const isActivated = !!league.survivorAuctionActivatedAt;
+  if (!isActivated && !isCommissioner) {
+    return NextResponse.json({ error: "Auction House is not active yet." }, { status: 403 });
+  }
 
   const [entry, auctions, ownedAdvantages] = await Promise.all([
     prisma.leagueEntry.upsert({
@@ -198,6 +203,8 @@ export async function GET(
       isCommissioner,
       currencyBalance: balance,
     },
+    isActivated,
+    activatedAt: league.survivorAuctionActivatedAt,
     v1Advantages: V1_ADVANTAGES,
     auctions: auctionsView,
     ownedAdvantages,
@@ -215,7 +222,7 @@ export async function POST(
 
   const league = await prisma.league.findUnique({
     where: { id: leagueId },
-    select: { id: true, showType: true, createdById: true },
+    select: { id: true, showType: true, createdById: true, survivorAuctionActivatedAt: true },
   });
   if (!league) return NextResponse.json({ error: "League not found." }, { status: 404 });
   if (league.showType !== "SURVIVOR") {
@@ -223,6 +230,12 @@ export async function POST(
   }
   if (league.createdById !== user.id) {
     return NextResponse.json({ error: "Only commissioner can create auctions." }, { status: 403 });
+  }
+  if (!league.survivorAuctionActivatedAt) {
+    return NextResponse.json(
+      { error: "Activate Auction House before creating auctions." },
+      { status: 400 }
+    );
   }
 
   let body: CreateAuctionPayload;
@@ -305,4 +318,3 @@ export async function POST(
     return NextResponse.json({ error: "Failed to create auction." }, { status: 500 });
   }
 }
-

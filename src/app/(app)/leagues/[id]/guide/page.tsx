@@ -7,6 +7,7 @@ import {
   survivorWeekPredictionLockAt,
 } from "@/lib/survivor/survivor-rules";
 import { survivorEntryCurrencyBalance } from "@/lib/survivor/currency";
+import { SURVIVOR_SEASON_WEEKS } from "@/lib/survivor/season";
 
 function formatDateTime(value: Date | null | undefined) {
   if (!value) return "TBD";
@@ -195,10 +196,7 @@ export default async function SurvivorPlayerGuidePage({
   const usedAdvantages = myAdvantages.filter((row) => row.status === "USED").length;
 
   const episodeByWeek = new Map(league.episodes.map((episode) => [episode.week, episode]));
-  const highestWeekSeen = league.episodes.length
-    ? Math.max(...league.episodes.map((episode) => episode.week))
-    : 1;
-  const weeksToShow = Math.min(Math.max(8, highestWeekSeen + 1), 16);
+  const weeksToShow = SURVIVOR_SEASON_WEEKS;
 
   const deadlines: DeadlineRow[] = Array.from({ length: weeksToShow }, (_, index) => {
     const week = index + 1;

@@ -309,6 +309,7 @@ model League {
   startsAt           DateTime?
   submissionDeadline DateTime?
   startedAt          DateTime? // manual override for testing: if set, league is considered started/revealed
+  survivorAuctionActivatedAt DateTime?
 
   // who created it (not necessarily the only commissioner)
   createdById String

@@ -6,8 +6,8 @@ import { prisma } from "@/lib/prisma";
 import DragRaceWeekForm from "@/components/commissioner/drag-race-week-form";
 import SurvivorWeeklyPredictionForm from "@/components/survivor/weekly-prediction-form";
 import SurvivorBootOrderLockInForm from "@/components/survivor/boot-order-lockin-form";
-import SurvivorAuctionPanel from "@/components/survivor/auction-panel";
 import { survivorWeekPredictionLockAt } from "@/lib/survivor/survivor-rules";
+import { SURVIVOR_SEASON_WEEKS } from "@/lib/survivor/season";
 
 type DragEpisodeWithResults = Prisma.EpisodeGetPayload<{
   select: {
@@ -81,6 +81,9 @@ export default async function WeekPage({
   });
 
   if (!league) return <main className="p-6">League not found.</main>;
+  if (league.showType === "SURVIVOR" && weekNum > SURVIVOR_SEASON_WEEKS) {
+    return <main className="p-6">Invalid week.</main>;
+  }
 
   const now = new Date();
   const hasStarted =
@@ -378,10 +381,25 @@ export default async function WeekPage({
               >
                 Edit Week {weekNum} results
               </Link>
+              <Link
+                href={`/leagues/${league.id}/auction`}
+                className="rounded-full border border-border bg-card px-3 py-1.5 text-xs font-semibold hover:bg-accent"
+              >
+                Auction House
+              </Link>
             </div>
           )}
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <div className="space-y-4">
+          {!isCommissioner && (
+            <div className="flex">
+              <Link
+                href={`/leagues/${league.id}/auction`}
+                className="rounded-full border border-border bg-card px-3 py-1.5 text-xs font-semibold hover:bg-accent"
+              >
+                Open Auction House
+              </Link>
+            </div>
+          )}
+          <div className="space-y-4">
             <SurvivorWeeklyPredictionForm
               leagueId={league.id}
               week={weekNum}
@@ -438,10 +456,6 @@ export default async function WeekPage({
               isLocked={bootOrderLocked}
               lockReason={bootOrderLockReason}
             />
-            </div>
-            <div>
-            <SurvivorAuctionPanel leagueId={league.id} week={weekNum} />
-            </div>
           </div>
         </div>
       ) : (

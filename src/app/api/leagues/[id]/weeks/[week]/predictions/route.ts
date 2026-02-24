@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { survivorWeekPredictionLockAt } from "@/lib/survivor/survivor-rules";
+import { SURVIVOR_SEASON_WEEKS } from "@/lib/survivor/season";
 
 type SurvivorPredictionPayload = {
   bootCastawayId: string;
@@ -51,6 +52,7 @@ export async function GET(
     });
     if (!league) return errorResponse("League not found", 404);
     if (league.showType !== "SURVIVOR") return errorResponse("Ruleset not implemented", 400);
+    if (weekNum > SURVIVOR_SEASON_WEEKS) return errorResponse("Invalid week", 400);
     if (league.members.length === 0) return errorResponse("Forbidden", 403);
 
     const [entry, episode] = await Promise.all([
@@ -212,6 +214,7 @@ export async function PUT(
     });
     if (!league) return errorResponse("League not found.", 404);
     if (league.showType !== "SURVIVOR") return errorResponse("Ruleset not implemented.", 400);
+    if (weekNum > SURVIVOR_SEASON_WEEKS) return errorResponse("Invalid week.", 400);
     if (league.members.length === 0) return errorResponse("Forbidden", 403);
 
     const result = await prisma.$transaction(async (tx) => {

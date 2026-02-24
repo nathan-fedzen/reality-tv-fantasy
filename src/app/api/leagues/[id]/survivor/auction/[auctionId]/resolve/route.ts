@@ -25,11 +25,14 @@ export async function POST(
 
   const league = await prisma.league.findUnique({
     where: { id: leagueId },
-    select: { id: true, showType: true, createdById: true },
+    select: { id: true, showType: true, createdById: true, survivorAuctionActivatedAt: true },
   });
   if (!league) return NextResponse.json({ error: "League not found." }, { status: 404 });
   if (league.showType !== "SURVIVOR") {
     return NextResponse.json({ error: "Survivor-only route." }, { status: 400 });
+  }
+  if (!league.survivorAuctionActivatedAt) {
+    return NextResponse.json({ error: "Auction House is not active yet." }, { status: 400 });
   }
   if (league.createdById !== user.id) {
     return NextResponse.json({ error: "Only commissioner can resolve auctions." }, { status: 403 });
@@ -212,4 +215,3 @@ export async function POST(
     return NextResponse.json({ error: "Failed to resolve auction." }, { status: 500 });
   }
 }
-

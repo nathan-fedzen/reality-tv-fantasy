@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { SURVIVOR_SEASON_WEEKS } from "@/lib/survivor/season";
 
 export default async function WeeksIndexPage({
   params,
@@ -49,7 +50,7 @@ export default async function WeeksIndexPage({
       .map((episode) => episode.week)
   );
 
-  const totalWeeks = league.showType === "SURVIVOR" ? 13 : 20;
+  const totalWeeks = league.showType === "SURVIVOR" ? SURVIVOR_SEASON_WEEKS : 20;
   const weeksToShow = Array.from({ length: totalWeeks }, (_, i) => i + 1);
 
   return (

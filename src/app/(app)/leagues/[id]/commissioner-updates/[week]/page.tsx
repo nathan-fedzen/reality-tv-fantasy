@@ -4,8 +4,7 @@ import { Prisma } from "@prisma/client";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import SurvivorWeekForm from "@/components/commissioner/survivor-week-form";
-
-const SURVIVOR_SEASON_WEEKS = 13;
+import { SURVIVOR_SEASON_WEEKS } from "@/lib/survivor/season";
 
 type SurvivorEpisodeWithResults = Prisma.EpisodeGetPayload<{
   select: {

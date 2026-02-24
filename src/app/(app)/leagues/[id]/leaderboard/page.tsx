@@ -17,6 +17,35 @@ function toNumber(d: Prisma.Decimal | null | undefined) {
   return Number(d.toString());
 }
 
+function jsonRecord(
+  value: Prisma.JsonValue | null | undefined
+): Prisma.JsonObject | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as Prisma.JsonObject;
+}
+
+function jsonNumber(value: Prisma.JsonValue | undefined): number {
+  if (typeof value === "number") return value;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+function jsonPathNumber(
+  value: Prisma.JsonValue | null | undefined,
+  path: string[]
+) {
+  let current: Prisma.JsonValue | undefined | null = value;
+  for (const segment of path) {
+    const record = jsonRecord(current);
+    if (!record) return 0;
+    current = record[segment];
+  }
+  return jsonNumber(current ?? undefined);
+}
+
 function initials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return "?";
@@ -78,6 +107,19 @@ type Row = {
     queenName: string;
     eliminated: boolean;
   }[];
+  survivorRoster: {
+    castawayId: string;
+    castawayName: string;
+    eliminated: boolean;
+  }[];
+  survivorPointsBreakdown: {
+    performance: number;
+    predictions: number;
+    bootOrder: number;
+    lastSurvivorStanding: number;
+    advantages: number;
+    other: number;
+  };
   rank: number;
   lastWeekRank: number | null;
   deltaRank: number | null; // + means moved up
@@ -170,6 +212,101 @@ export default async function LeaderboardPage({
     counts.forEach((value, key) => correctBootPredictionsByEntryId.set(key, value));
   }
 
+  const survivorRosterByEntryId = new Map<
+    string,
+    Array<{ castawayId: string; castawayName: string; eliminated: boolean }>
+  >();
+  const survivorPointsBreakdownByEntryId = new Map<
+    string,
+    {
+      performance: number;
+      predictions: number;
+      bootOrder: number;
+      lastSurvivorStanding: number;
+      advantages: number;
+      other: number;
+    }
+  >();
+
+  if (isSurvivor) {
+    const [draftPicks, eliminatedResults, scoreRows] = await Promise.all([
+      prisma.survivorDraftPick.findMany({
+        where: { draft: { leagueId } },
+        select: {
+          leagueEntryId: true,
+          castawayId: true,
+          castaway: { select: { name: true } },
+          overallPick: true,
+        },
+        orderBy: [{ leagueEntryId: "asc" }, { overallPick: "asc" }],
+      }),
+      prisma.survivorEpisodeCastawayResult.findMany({
+        where: { leagueId, eliminated: true },
+        select: { castawayId: true },
+        distinct: ["castawayId"],
+      }),
+      prisma.leagueEntryScore.findMany({
+        where: { leagueEntry: { leagueId } },
+        select: {
+          leagueEntryId: true,
+          points: true,
+          breakdown: true,
+        },
+      }),
+    ]);
+
+    const eliminatedCastawayIds = new Set(
+      eliminatedResults.map((row) => row.castawayId)
+    );
+
+    for (const pick of draftPicks) {
+      const list = survivorRosterByEntryId.get(pick.leagueEntryId) ?? [];
+      list.push({
+        castawayId: pick.castawayId,
+        castawayName: pick.castaway.name,
+        eliminated: eliminatedCastawayIds.has(pick.castawayId),
+      });
+      survivorRosterByEntryId.set(pick.leagueEntryId, list);
+    }
+
+    for (const score of scoreRows) {
+      const existing = survivorPointsBreakdownByEntryId.get(score.leagueEntryId) ?? {
+        performance: 0,
+        predictions: 0,
+        bootOrder: 0,
+        lastSurvivorStanding: 0,
+        advantages: 0,
+        other: 0,
+      };
+
+      const performance = jsonPathNumber(score.breakdown, ["performanceTotal"]);
+      const predictions = jsonPathNumber(score.breakdown, [
+        "predictions",
+        "cappedPoints",
+      ]);
+      const bootOrder = jsonPathNumber(score.breakdown, ["bootOrder", "points"]);
+      const lastSurvivorStanding = jsonPathNumber(score.breakdown, [
+        "engagement",
+        "lastSurvivorStanding",
+        "points",
+      ]);
+      const advantages = jsonPathNumber(score.breakdown, ["advantages", "points"]);
+
+      const scoreTotal = toNumber(score.points);
+      const categorizedTotal =
+        performance + predictions + bootOrder + lastSurvivorStanding + advantages;
+
+      existing.performance += performance;
+      existing.predictions += predictions;
+      existing.bootOrder += bootOrder;
+      existing.lastSurvivorStanding += lastSurvivorStanding;
+      existing.advantages += advantages;
+      existing.other += scoreTotal - categorizedTotal;
+
+      survivorPointsBreakdownByEntryId.set(score.leagueEntryId, existing);
+    }
+  }
+
   const rowsBase = entries.map((e) => {
     const total = totalsByEntryId.get(e.id) ?? 0;
     const display = formatDisplayName(e.user, e.userId);
@@ -193,6 +330,15 @@ export default async function LeaderboardPage({
           queenName: p.queen?.name ?? "—",
           eliminated: p.queenId ? eliminatedQueenIds.has(p.queenId) : false,
         })),
+      survivorRoster: survivorRosterByEntryId.get(e.id) ?? [],
+      survivorPointsBreakdown: survivorPointsBreakdownByEntryId.get(e.id) ?? {
+        performance: 0,
+        predictions: 0,
+        bootOrder: 0,
+        lastSurvivorStanding: 0,
+        advantages: 0,
+        other: 0,
+      },
     };
   });
 
@@ -640,6 +786,138 @@ export default async function LeaderboardPage({
               })}
             </div>
           </div>
+        )}
+
+        {isSurvivor && ranked.length > 0 && (
+          <section className="rounded-3xl border border-border bg-card shadow-sm overflow-hidden">
+            <div className="p-5 border-b border-border">
+              <h2 className="text-base font-semibold">
+                Survivor Teams and Point Sources
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Active and eliminated castaways, plus where each player&apos;s
+                points are coming from.
+              </p>
+            </div>
+
+            <div className="divide-y divide-border">
+              {ranked.map((r) => {
+                const active = r.survivorRoster.filter((castaway) => !castaway.eliminated);
+                const eliminated = r.survivorRoster.filter((castaway) => castaway.eliminated);
+                const breakdownRows = [
+                  {
+                    label: "Performance",
+                    value: r.survivorPointsBreakdown.performance,
+                    tone: "text-emerald-300",
+                  },
+                  {
+                    label: "Predictions",
+                    value: r.survivorPointsBreakdown.predictions,
+                    tone: "text-sky-300",
+                  },
+                  {
+                    label: "Boot order",
+                    value: r.survivorPointsBreakdown.bootOrder,
+                    tone: "text-violet-300",
+                  },
+                  {
+                    label: "Last survivor standing",
+                    value: r.survivorPointsBreakdown.lastSurvivorStanding,
+                    tone: "text-amber-300",
+                  },
+                  {
+                    label: "Advantages",
+                    value: r.survivorPointsBreakdown.advantages,
+                    tone: "text-pink-300",
+                  },
+                  {
+                    label: "Other",
+                    value: r.survivorPointsBreakdown.other,
+                    tone: "text-muted-foreground",
+                  },
+                ];
+
+                return (
+                  <div key={`${r.entryId}-survivor-breakdown`} className="p-5 space-y-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="font-semibold">{r.displayName}</div>
+                        <div className="text-xs text-muted-foreground">
+                          Rank #{r.rank} | {r.totalPoints.toFixed(2)} total points
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-xs text-muted-foreground">Roster</div>
+                        <div className="text-sm font-semibold">
+                          {active.length} active / {eliminated.length} eliminated
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/10 p-3">
+                        <div className="text-xs font-semibold uppercase tracking-[0.08em] text-emerald-200">
+                          Active survivors
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {active.length === 0 ? (
+                            <span className="text-xs text-muted-foreground">
+                              None remaining
+                            </span>
+                          ) : (
+                            active.map((castaway) => (
+                              <span
+                                key={`${r.entryId}-active-${castaway.castawayId}`}
+                                className="rounded-full border border-emerald-500/30 bg-emerald-500/15 px-2.5 py-1 text-xs font-medium"
+                              >
+                                {castaway.castawayName}
+                              </span>
+                            ))
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-destructive/30 bg-destructive/10 p-3">
+                        <div className="text-xs font-semibold uppercase tracking-[0.08em] text-red-200">
+                          Eliminated survivors
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {eliminated.length === 0 ? (
+                            <span className="text-xs text-muted-foreground">None yet</span>
+                          ) : (
+                            eliminated.map((castaway) => (
+                              <span
+                                key={`${r.entryId}-out-${castaway.castawayId}`}
+                                className="rounded-full border border-destructive/40 bg-destructive/15 px-2.5 py-1 text-xs font-medium line-through"
+                              >
+                                {castaway.castawayName}
+                              </span>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                      {breakdownRows.map((item) => (
+                        <div
+                          key={`${r.entryId}-${item.label}`}
+                          className="rounded-xl border border-border bg-background/60 px-3 py-2"
+                        >
+                          <div className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
+                            {item.label}
+                          </div>
+                          <div className={`mt-1 text-lg font-semibold tabular-nums ${item.tone}`}>
+                            {item.value.toFixed(2)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
         )}
       </div>
     </main>
