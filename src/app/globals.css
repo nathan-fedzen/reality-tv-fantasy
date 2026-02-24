@@ -158,4 +158,90 @@
   select {
     color-scheme: light dark;
   }
+
+  /* Survivor-only palette + typography (scoped to /leagues/[id] survivor routes) */
+  .survivor-theme {
+    --background: #ece8d8;
+    --foreground: #182017;
+
+    --card: #f7f2df;
+    --card-foreground: #182017;
+
+    --popover: #f7f2df;
+    --popover-foreground: #182017;
+
+    /* Earth/tribal focus: greens + browns + ember red */
+    --primary: #2f6a3a;
+    --primary-foreground: #f7f2df;
+    --secondary: #6a4a2f;
+    --secondary-foreground: #f7f2df;
+
+    --muted: #ddd3b4;
+    --muted-foreground: #4b3f2c;
+
+    /* Small navy accent only */
+    --accent: #1d3a66;
+    --accent-foreground: #f7f2df;
+
+    --destructive: #b53c2f;
+
+    --border: #b9a983;
+    --input: #b9a983;
+    /* Small yellow highlight for focus/rings */
+    --ring: #d8b625;
+
+    font-family: var(--font-survivor-body), "Trebuchet MS", "Segoe UI", sans-serif;
+    background:
+      radial-gradient(1150px 430px at 6% -10%, rgb(47 106 58 / 0.24), transparent 62%),
+      radial-gradient(980px 380px at 94% -12%, rgb(106 74 47 / 0.2), transparent 62%),
+      radial-gradient(780px 290px at 50% -8%, rgb(216 182 37 / 0.1), transparent 62%),
+      radial-gradient(900px 340px at 88% 6%, rgb(29 58 102 / 0.08), transparent 64%),
+      linear-gradient(180deg, #ece8d8, #ddd3b4);
+  }
+
+  .survivor-theme h1,
+  .survivor-theme h2,
+  .survivor-theme h3,
+  .survivor-theme .survivor-display {
+    font-family: var(--font-survivor-display), var(--font-survivor-body), serif;
+    letter-spacing: 0.02em;
+  }
+
+  .dark .survivor-theme {
+    --background: #101a13;
+    --foreground: #f1f3ea;
+
+    --card: #17261b;
+    --card-foreground: #f1f3ea;
+
+    --popover: #17261b;
+    --popover-foreground: #f1f3ea;
+
+    --primary: #3f8a4d;
+    --primary-foreground: #f1f3ea;
+    --secondary: #7a5638;
+    --secondary-foreground: #f1f3ea;
+
+    --muted: #233326;
+    --muted-foreground: #c3c7b8;
+
+    /* Small navy accent only */
+    --accent: #264a7f;
+    --accent-foreground: #f1f3ea;
+
+    --destructive: #cb4a39;
+
+    --border: #35513b;
+    --input: #35513b;
+    /* Small yellow highlight for focus/rings */
+    --ring: #d8b625;
+
+    background:
+      radial-gradient(1230px 470px at 7% -20%, rgb(63 138 77 / 0.28), transparent 62%),
+      radial-gradient(980px 390px at 92% -18%, rgb(122 86 56 / 0.24), transparent 64%),
+      radial-gradient(790px 310px at 56% -12%, rgb(203 74 57 / 0.16), transparent 64%),
+      radial-gradient(900px 350px at 88% 8%, rgb(38 74 127 / 0.12), transparent 66%),
+      radial-gradient(760px 280px at 48% -8%, rgb(216 182 37 / 0.1), transparent 66%),
+      linear-gradient(180deg, #101a13, #0c150f);
+  }
 }

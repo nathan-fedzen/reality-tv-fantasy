@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
 
-export default function LoginForm() {
+export default function LoginForm({ callbackUrl }: { callbackUrl: string }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -27,7 +27,7 @@ export default function LoginForm() {
           try {
             const result = await signIn("email", {
               email,
-              callbackUrl: "/dashboard",
+              callbackUrl,
               redirect: false,
             });
 

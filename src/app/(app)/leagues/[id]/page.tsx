@@ -376,7 +376,7 @@ export default async function LeaguePage({
                     </div>
                     <div className="rounded-xl border border-border bg-card px-2 py-2">
                       <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                        Entries
+                        Players
                       </div>
                       <div className="text-lg font-semibold">{rankedWithPlace.length}</div>
                     </div>

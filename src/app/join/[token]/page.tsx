@@ -10,11 +10,13 @@ export default async function JoinByTokenPage({
   params: Promise<{ token: string }>;
 }) {
   const { token } = await params;
+  const cleaned = (token ?? "").trim();
 
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  if (!user) {
+    redirect(`/login?callbackUrl=${encodeURIComponent(`/join/${encodeURIComponent(cleaned)}`)}`);
+  }
 
-  const cleaned = (token ?? "").trim();
   if (!cleaned || cleaned === "undefined") {
     return <main className="p-6">Invalid invite token.</main>;
   }
