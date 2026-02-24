@@ -4,6 +4,7 @@ export const SURVIVOR_V1_RULES = {
     individualImmunityWin: 5,
     tribeImmunityWin: 3,
     individualRewardWin: 3,
+    confessionalPer: 0.5,
     idolFind: 4,
     idolPlaySuccessful: 6,
     confessionalLeader: 4,

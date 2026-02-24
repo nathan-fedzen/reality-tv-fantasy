@@ -22,6 +22,7 @@ type SurvivorCastawayResultPayload = {
   advantagesFound: number;
   idolsPlayedSuccessfully: number;
   votesReceived: number;
+  confessionalCount: number;
   confessionalLeader: boolean;
   endgamePlacement: number | null;
 };
@@ -131,6 +132,7 @@ export async function GET(
                 advantagesFound: true,
                 idolsPlayedSuccessfully: true,
                 votesReceived: true,
+                confessionalCount: true,
                 confessionalLeader: true,
                 endgamePlacement: true,
               },
@@ -326,6 +328,7 @@ export async function PUT(
         advantagesFound: number;
         idolsPlayedSuccessfully: number;
         votesReceived: number;
+        confessionalCount: number;
         confessionalLeader: boolean;
         endgamePlacement: number | null;
       }> = [];
@@ -337,6 +340,7 @@ export async function PUT(
         const advantagesFound = parseNonNegativeInt(row.advantagesFound);
         const idolsPlayedSuccessfully = parseNonNegativeInt(row.idolsPlayedSuccessfully);
         const votesReceived = parseNonNegativeInt(row.votesReceived);
+        const confessionalCount = parseNonNegativeInt(row.confessionalCount);
 
         if (
           individualImmunityWins == null ||
@@ -344,7 +348,8 @@ export async function PUT(
           individualRewardWins == null ||
           advantagesFound == null ||
           idolsPlayedSuccessfully == null ||
-          votesReceived == null
+          votesReceived == null ||
+          confessionalCount == null
         ) {
           return NextResponse.json(
             { error: "Numeric Survivor stats must be non-negative integers." },
@@ -377,6 +382,7 @@ export async function PUT(
           advantagesFound,
           idolsPlayedSuccessfully,
           votesReceived,
+          confessionalCount,
           confessionalLeader: !!row.confessionalLeader,
           endgamePlacement,
         });
@@ -472,10 +478,31 @@ export async function PUT(
             advantagesFound: row.advantagesFound,
             idolsPlayedSuccessfully: row.idolsPlayedSuccessfully,
             votesReceived: row.votesReceived,
+            confessionalCount: row.confessionalCount,
             confessionalLeader: row.confessionalLeader,
             endgamePlacement: row.endgamePlacement,
           })),
         });
+
+        await tx.survivorCastaway.updateMany({
+          where: { leagueId: league.id },
+          data: { totalConfessionals: 0 },
+        });
+
+        const confessionalTotals = await tx.survivorEpisodeCastawayResult.groupBy({
+          by: ["castawayId"],
+          where: { leagueId: league.id },
+          _sum: { confessionalCount: true },
+        });
+
+        await Promise.all(
+          confessionalTotals.map((row) =>
+            tx.survivorCastaway.update({
+              where: { id: row.castawayId },
+              data: { totalConfessionals: row._sum.confessionalCount ?? 0 },
+            })
+          )
+        );
 
         await recomputeSurvivorWeekScores(tx, league.id, episodeForWeek.id);
         return episodeForWeek;

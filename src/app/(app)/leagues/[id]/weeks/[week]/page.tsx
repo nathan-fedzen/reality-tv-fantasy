@@ -45,6 +45,7 @@ type SurvivorEpisodeWithResults = Prisma.EpisodeGetPayload<{
         advantagesFound: true;
         idolsPlayedSuccessfully: true;
         votesReceived: true;
+        confessionalCount: true;
         confessionalLeader: true;
         endgamePlacement: true;
       };
@@ -156,6 +157,7 @@ export default async function WeekPage({
               advantagesFound: true,
               idolsPlayedSuccessfully: true,
               votesReceived: true,
+              confessionalCount: true,
               confessionalLeader: true,
               endgamePlacement: true,
             },
@@ -381,6 +383,7 @@ export default async function WeekPage({
               advantagesFound: row.advantagesFound,
               idolsPlayedSuccessfully: row.idolsPlayedSuccessfully,
               votesReceived: row.votesReceived,
+              confessionalCount: row.confessionalCount,
               confessionalLeader: row.confessionalLeader,
               endgamePlacement: row.endgamePlacement,
             }))}

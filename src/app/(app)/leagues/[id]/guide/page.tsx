@@ -230,6 +230,10 @@ export default async function SurvivorPlayerGuidePage({
       label: "Individual reward win",
       points: SURVIVOR_V1_RULES.performance.individualRewardWin,
     },
+    {
+      label: "Each confessional",
+      points: SURVIVOR_V1_RULES.performance.confessionalPer,
+    },
     { label: "Idol/advantage found", points: SURVIVOR_V1_RULES.performance.idolFind },
     {
       label: "Idol played successfully",
@@ -402,6 +406,10 @@ export default async function SurvivorPlayerGuidePage({
             <ul className="mt-3 space-y-2 text-sm">
               <li className="rounded-xl border border-border bg-background/60 p-3">
                 Weekly prediction: one submission only.
+              </li>
+              <li className="rounded-xl border border-border bg-background/60 p-3">
+                Confessionals score weekly and are also tracked as a running season total per
+                castaway.
               </li>
               <li className="rounded-xl border border-border bg-background/60 p-3">
                 Survivor leagues run with 2-8 players. Everyone gets equal draft picks, so

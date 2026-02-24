@@ -404,6 +404,7 @@ model SurvivorCastaway {
   name      String
   tribe     String?
   imageUrl  String?
+  totalConfessionals Int @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -516,6 +517,7 @@ model SurvivorEpisodeCastawayResult {
   advantagesFound         Int      @default(0)
   idolsPlayedSuccessfully Int      @default(0)
   votesReceived           Int      @default(0)
+  confessionalCount       Int      @default(0)
   confessionalLeader      Boolean  @default(false)
   endgamePlacement        Int?
   createdAt               DateTime @default(now())

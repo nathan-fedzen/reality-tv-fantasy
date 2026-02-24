@@ -27,6 +27,7 @@ type ExistingResult = {
   advantagesFound: number;
   idolsPlayedSuccessfully: number;
   votesReceived: number;
+  confessionalCount: number;
   confessionalLeader: boolean;
   endgamePlacement: number | null;
 };
@@ -41,6 +42,7 @@ type RowState = {
   advantagesFound: number;
   idolsPlayedSuccessfully: number;
   votesReceived: number;
+  confessionalCount: number;
   confessionalLeader: boolean;
   endgamePlacement: string;
 };
@@ -104,6 +106,7 @@ export default function SurvivorWeekForm(props: {
         advantagesFound: existing?.advantagesFound ?? 0,
         idolsPlayedSuccessfully: existing?.idolsPlayedSuccessfully ?? 0,
         votesReceived: existing?.votesReceived ?? 0,
+        confessionalCount: existing?.confessionalCount ?? 0,
         confessionalLeader: existing?.confessionalLeader ?? false,
         endgamePlacement:
           existing?.endgamePlacement != null ? String(existing.endgamePlacement) : "",
@@ -149,6 +152,7 @@ export default function SurvivorWeekForm(props: {
             advantagesFound: Number(row.advantagesFound),
             idolsPlayedSuccessfully: Number(row.idolsPlayedSuccessfully),
             votesReceived: Number(row.votesReceived),
+            confessionalCount: Number(row.confessionalCount),
             confessionalLeader: row.confessionalLeader,
             endgamePlacement: row.endgamePlacement ? Number(row.endgamePlacement) : null,
           })),
@@ -330,7 +334,7 @@ export default function SurvivorWeekForm(props: {
                   </label>
                 </div>
 
-                <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-7">
+                <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-8">
                   <label className="text-xs">
                     Individual immunity wins
                     <input
@@ -421,6 +425,22 @@ export default function SurvivorWeekForm(props: {
                       onChange={(e) =>
                         updateRow(row.castawayId, {
                           votesReceived: Number(e.target.value || 0),
+                        })
+                      }
+                      disabled={disabled || isPending}
+                    />
+                  </label>
+
+                  <label className="text-xs">
+                    Confessionals
+                    <input
+                      type="number"
+                      min={0}
+                      className="mt-1 w-full rounded-md border px-2 py-1 text-sm"
+                      value={row.confessionalCount}
+                      onChange={(e) =>
+                        updateRow(row.castawayId, {
+                          confessionalCount: Number(e.target.value || 0),
                         })
                       }
                       disabled={disabled || isPending}

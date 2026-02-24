@@ -283,6 +283,7 @@ export async function recomputeSurvivorWeekScores(
         advantagesFound: true,
         idolsPlayedSuccessfully: true,
         votesReceived: true,
+        confessionalCount: true,
         confessionalLeader: true,
         endgamePlacement: true,
       },
@@ -415,6 +416,7 @@ export async function recomputeSurvivorWeekScores(
     const perCastaway: Array<{
       castawayId: string;
       castawayName: string;
+      confessionalCount: number;
       points: {
         survived: number;
         individualImmunity: number;
@@ -422,6 +424,7 @@ export async function recomputeSurvivorWeekScores(
         reward: number;
         idolFind: number;
         idolPlay: number;
+        confessionals: number;
         confessionalLeader: number;
         eliminated: number;
         endgamePlacement: number;
@@ -436,6 +439,7 @@ export async function recomputeSurvivorWeekScores(
         perCastaway.push({
           castawayId: castaway.castawayId,
           castawayName: castaway.castawayName,
+          confessionalCount: 0,
           points: {
             survived: 0,
             individualImmunity: 0,
@@ -443,6 +447,7 @@ export async function recomputeSurvivorWeekScores(
             reward: 0,
             idolFind: 0,
             idolPlay: 0,
+            confessionals: 0,
             confessionalLeader: 0,
             eliminated: 0,
             endgamePlacement: 0,
@@ -466,6 +471,8 @@ export async function recomputeSurvivorWeekScores(
         idolPlay:
           result.idolsPlayedSuccessfully *
           SURVIVOR_V1_RULES.performance.idolPlaySuccessful,
+        confessionals:
+          result.confessionalCount * SURVIVOR_V1_RULES.performance.confessionalPer,
         confessionalLeader: result.confessionalLeader
           ? SURVIVOR_V1_RULES.performance.confessionalLeader
           : 0,
@@ -480,6 +487,7 @@ export async function recomputeSurvivorWeekScores(
         points.reward +
         points.idolFind +
         points.idolPlay +
+        points.confessionals +
         points.confessionalLeader +
         points.eliminated +
         points.endgamePlacement;
@@ -489,6 +497,7 @@ export async function recomputeSurvivorWeekScores(
       perCastaway.push({
         castawayId: castaway.castawayId,
         castawayName: castaway.castawayName,
+        confessionalCount: result.confessionalCount,
         points,
         subtotal,
       });
