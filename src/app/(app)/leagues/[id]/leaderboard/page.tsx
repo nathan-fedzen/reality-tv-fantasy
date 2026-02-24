@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import ConfettiBurst from "@/components/confetti-burst";
 import AnimatedList from "@/components/ui/animated-list";
+import ElectricBorder from "@/components/ElectricBorder";
 
 function formatDisplayName(
   user: { displayName?: string | null; name: string | null; email: string | null },
@@ -586,21 +587,32 @@ export default async function LeaderboardPage({
 
                   const tint =
                     place === 1
-                      ? "from-primary/20 to-secondary/10"
+                      ? "from-yellow-400/25 via-amber-300/12 to-background"
                       : place === 2
-                      ? "from-secondary/20 to-primary/10"
-                      : "from-muted to-background";
+                      ? "from-slate-200/25 via-zinc-300/10 to-background"
+                      : "from-orange-500/20 via-amber-700/10 to-background";
+                  const electricColor =
+                    place === 1 ? "#facc15" : place === 2 ? "#c0c7d1" : "#cd7f32";
 
                   return (
-                    <div
+                    <ElectricBorder
                       key={p.entryId}
+                      color={electricColor}
+                      speed={0}
+                      chaos={0}
+                      thickness={2}
+                      style={{ borderRadius: 16 }}
                       className={[
-                        "rounded-2xl border border-border bg-gradient-to-br p-4 shadow-sm",
-                        tint,
                         place === 1 ? "sm:scale-[1.02]" : "",
                       ].join(" ")}
                     >
-                      <div className="flex items-start justify-between gap-3">
+                      <div
+                        className={[
+                          "rounded-2xl bg-gradient-to-br p-4",
+                          tint,
+                        ].join(" ")}
+                      >
+                        <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="text-xs font-extrabold">
                             {placeLabel}
@@ -617,7 +629,8 @@ export default async function LeaderboardPage({
                           {initials(p.displayName)}
                         </div>
                       </div>
-                    </div>
+                      </div>
+                    </ElectricBorder>
                   );
                 })}
               </div>
