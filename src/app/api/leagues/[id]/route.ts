@@ -6,6 +6,16 @@ import { prisma } from "@/lib/prisma";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function isMissingTableError(err: unknown) {
+  if (!(err instanceof Prisma.PrismaClientKnownRequestError)) return false;
+  if (err.code === "P2021") return true;
+  if (err.code !== "P2010") return false;
+
+  const metaText =
+    err.meta && typeof err.meta === "object" ? JSON.stringify(err.meta) : "";
+  return metaText.includes("does not exist") || metaText.includes("relation");
+}
+
 export async function DELETE(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -35,36 +45,144 @@ export async function DELETE(
   }
 
   try {
-    await prisma.$transaction(async (tx) => {
-      // Some child tables reference castaway/player rows with RESTRICT constraints.
-      // Delete those dependents first so league deletion is deterministic.
-      await tx.survivorBootOrderItem.deleteMany({
-        where: {
-          OR: [
-            { submission: { leagueId: id } },
-            { castaway: { leagueId: id } },
-          ],
-        },
-      });
+    const optionalCleanup = async (op: () => Promise<unknown>) => {
+      try {
+        await op();
+      } catch (err) {
+        if (isMissingTableError(err)) return;
+        throw err;
+      }
+    };
 
-      await tx.survivorDraftPick.deleteMany({
+    // Some child tables reference castaway/player rows with RESTRICT constraints.
+    // Delete those dependents first so league deletion is deterministic.
+    await optionalCleanup(() =>
+      prisma.$executeRaw`
+        DELETE FROM "SurvivorBootOrderItem"
+        WHERE "submissionId" IN (
+          SELECT "id" FROM "SurvivorBootOrderSubmission" WHERE "leagueId" = ${id}
+        )
+        OR "castawayId" IN (
+          SELECT "id" FROM "SurvivorCastaway" WHERE "leagueId" = ${id}
+        )
+      `
+    );
+
+    await optionalCleanup(() =>
+      prisma.survivorBootOrderSubmission.deleteMany({
+        where: { leagueId: id },
+      })
+    );
+
+    await optionalCleanup(() =>
+      prisma.survivorDraftPick.deleteMany({
         where: {
           draft: { leagueId: id },
         },
-      });
+      })
+    );
 
-      await tx.survivorEpisodeCastawayResult.deleteMany({
+    await optionalCleanup(() =>
+      prisma.survivorEpisodeCastawayResult.deleteMany({
         where: { leagueId: id },
-      });
+      })
+    );
 
-      await tx.traitorsEntryPick.deleteMany({
+    await optionalCleanup(() =>
+      prisma.traitorsEntryPick.deleteMany({
         where: {
           entry: { leagueId: id },
         },
-      });
+      })
+    );
 
-      await tx.league.delete({ where: { id } });
-    });
+    await optionalCleanup(() =>
+      prisma.leagueMessage.deleteMany({
+        where: { leagueId: id },
+      })
+    );
+
+    await optionalCleanup(() =>
+      prisma.traitorsEpisodePlayerResult.deleteMany({
+        where: {
+          episode: { leagueId: id },
+        },
+      })
+    );
+
+    await optionalCleanup(() =>
+      prisma.traitorsVote.deleteMany({
+        where: { leagueId: id },
+      })
+    );
+
+    await optionalCleanup(() =>
+      prisma.memberEffect.deleteMany({
+        where: { leagueId: id },
+      })
+    );
+
+    await optionalCleanup(() =>
+      prisma.traitorsFantasyRolePeriod.deleteMany({
+        where: { leagueId: id },
+      })
+    );
+
+    await optionalCleanup(() =>
+      prisma.traitorsPlayer.deleteMany({
+        where: { leagueId: id },
+      })
+    );
+
+    await optionalCleanup(() =>
+      prisma.episodeResult.deleteMany({
+        where: { episode: { leagueId: id } },
+      })
+    );
+
+    await optionalCleanup(() =>
+      prisma.episodeFinalePlacement.deleteMany({
+        where: { episode: { leagueId: id } },
+      })
+    );
+
+    await optionalCleanup(() =>
+      prisma.episodeFinaleExtra.deleteMany({
+        where: { episode: { leagueId: id } },
+      })
+    );
+
+    await optionalCleanup(() =>
+      prisma.episode.deleteMany({
+        where: { leagueId: id },
+      })
+    );
+
+    await optionalCleanup(() =>
+      prisma.leagueEntry.deleteMany({
+        where: { leagueId: id },
+      })
+    );
+
+    await optionalCleanup(() =>
+      prisma.leagueMember.deleteMany({
+        where: { leagueId: id },
+      })
+    );
+
+    await optionalCleanup(() =>
+      prisma.leagueInvite.deleteMany({
+        where: { leagueId: id },
+      })
+    );
+
+    await optionalCleanup(() =>
+      prisma.survivorCastaway.deleteMany({
+        where: { leagueId: id },
+      })
+    );
+
+    await prisma.league.delete({ where: { id } });
 
     return NextResponse.json({ ok: true }, { status: 200 });
   } catch (err) {
