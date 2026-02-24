@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import DisplayNameForm from "@/components/account/display-name-form";
+import PushNotificationsForm from "@/components/account/push-notifications-form";
 
 export default async function AccountPage() {
   const user = await getCurrentUser();
@@ -16,6 +17,11 @@ export default async function AccountPage() {
           This is what other players will see on leaderboards and picks.
         </p>
         <DisplayNameForm initialValue={user.displayName ?? user.name ?? ""} />
+      </section>
+
+      <section className="rounded-lg border p-4 space-y-2">
+        <h2 className="font-medium">Notifications</h2>
+        <PushNotificationsForm />
       </section>
     </main>
   );

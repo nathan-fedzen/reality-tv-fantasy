@@ -168,4 +168,37 @@ End of Day Recap:
 4. Is it a Server vs Client boundary issue?
 5. Did you paste the snapshot to ChatGPT?
 
+---
+
+## Push Notifications Setup
+
+Add these to `.env.local` (and production env):
+
+```env
+WEB_PUSH_PUBLIC_KEY=
+WEB_PUSH_PRIVATE_KEY=
+WEB_PUSH_SUBJECT=mailto:support@realitytvfantasy.app
+CRON_SECRET=
+PICKS_REMINDER_LOOKBACK_MINUTES=15
+```
+
+Generate VAPID keys:
+
+```bash
+npm run notifications:vapid
+```
+
+API endpoints:
+
+- Subscribe/unsubscribe device: `POST/DELETE /api/notifications/subscribe`
+- Test current device: `POST /api/notifications/test`
+- Picks reminder cron job: `GET /api/cron/notifications/picks`
+
+Cron authorization:
+
+- Set `CRON_SECRET`
+- Call cron endpoint with either:
+  - `Authorization: Bearer <CRON_SECRET>`
+  - `x-cron-secret: <CRON_SECRET>`
+
 

@@ -9,7 +9,8 @@
     "dev": "next dev",
     "start": "next start",
     "lint": "eslint",
-    "mock:survivor-season": "npx tsx scripts/mock-survivor-season.ts"
+    "mock:survivor-season": "npx tsx scripts/mock-survivor-season.ts",
+    "notifications:vapid": "node scripts/generate-vapid-keys.mjs"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.1",
@@ -18,6 +19,7 @@
     "@radix-ui/react-label": "^2.1.8",
     "@radix-ui/react-select": "^2.2.6",
     "@radix-ui/react-slot": "^1.2.4",
+    "@types/web-push": "^3.6.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.562.0",
@@ -31,7 +33,8 @@
     "react-dom": "19.2.3",
     "resend": "^6.6.0",
     "tailwind-merge": "^3.4.0",
-    "uuid": "^13.0.0"
+    "uuid": "^13.0.0",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

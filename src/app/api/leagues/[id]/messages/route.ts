@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { sendWebPushToUsers } from "@/lib/notifications/web-push";
 
 function badRequest(error: string) {
   return NextResponse.json({ error }, { status: 400 });
@@ -149,6 +150,40 @@ export async function POST(
         authorMemberId: true,
       },
     });
+
+    const authorName = user.displayName ?? user.name ?? user.email ?? "Player";
+    const bodyPreview = body.length > 120 ? `${body.slice(0, 120)}...` : body;
+
+    try {
+      const leagueRecipients = await prisma.league.findUnique({
+        where: { id: leagueId },
+        select: {
+          name: true,
+          members: {
+            where: { userId: { not: user.id } },
+            select: { userId: true },
+          },
+        },
+      });
+
+      const recipientIds = Array.from(
+        new Set((leagueRecipients?.members ?? []).map((member) => member.userId))
+      );
+
+      if (recipientIds.length > 0) {
+        await sendWebPushToUsers({
+          userIds: recipientIds,
+          payload: {
+            title: `${leagueRecipients?.name ?? "League"} chat`,
+            body: `${authorName}: ${bodyPreview}`,
+            url: `/leagues/${leagueId}`,
+            tag: `league-chat-${leagueId}`,
+          },
+        });
+      }
+    } catch {
+      // Keep chat posting resilient even if push delivery fails.
+    }
 
     return NextResponse.json({
       ok: true,
