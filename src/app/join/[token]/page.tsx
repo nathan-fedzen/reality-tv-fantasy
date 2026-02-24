@@ -38,7 +38,7 @@ export default async function JoinByTokenPage({
     return <main className="p-6">This invite link is no longer active.</main>;
   }
 
-  if (invite.expiresAt && invite.expiresAt.getTime() < Date.now()) {
+  if (invite.expiresAt && invite.expiresAt < new Date()) {
     return <main className="p-6">This invite link has expired.</main>;
   }
 
@@ -59,11 +59,16 @@ export default async function JoinByTokenPage({
       prisma.leagueMember.count({ where: { leagueId: invite.leagueId } }),
       prisma.league.findUnique({
         where: { id: invite.leagueId },
-        select: { maxPlayers: true },
+        select: { maxPlayers: true, showType: true },
       }),
     ]);
 
-    if (league && memberCount >= league.maxPlayers) {
+    const effectiveCap =
+      league?.showType === "SURVIVOR"
+        ? Math.min(league.maxPlayers, 8)
+        : (league?.maxPlayers ?? null);
+
+    if (effectiveCap != null && memberCount >= effectiveCap) {
       return <main className="p-6">This league is full.</main>;
     }
 

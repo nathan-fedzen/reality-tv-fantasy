@@ -40,6 +40,7 @@ type SurvivorEpisodeWithResults = Prisma.EpisodeGetPayload<{
         survived: true;
         eliminated: true;
         individualImmunityWins: true;
+        tribeImmunityWins: true;
         individualRewardWins: true;
         advantagesFound: true;
         idolsPlayedSuccessfully: true;
@@ -150,6 +151,7 @@ export default async function WeekPage({
               survived: true,
               eliminated: true,
               individualImmunityWins: true,
+              tribeImmunityWins: true,
               individualRewardWins: true,
               advantagesFound: true,
               idolsPlayedSuccessfully: true,
@@ -374,6 +376,7 @@ export default async function WeekPage({
               survived: row.survived,
               eliminated: row.eliminated,
               individualImmunityWins: row.individualImmunityWins,
+              tribeImmunityWins: row.tribeImmunityWins,
               individualRewardWins: row.individualRewardWins,
               advantagesFound: row.advantagesFound,
               idolsPlayedSuccessfully: row.idolsPlayedSuccessfully,

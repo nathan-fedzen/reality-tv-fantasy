@@ -17,6 +17,7 @@ type SurvivorCastawayResultPayload = {
   survived: boolean;
   eliminated: boolean;
   individualImmunityWins: number;
+  tribeImmunityWins: number;
   individualRewardWins: number;
   advantagesFound: number;
   idolsPlayedSuccessfully: number;
@@ -125,6 +126,7 @@ export async function GET(
                 survived: true,
                 eliminated: true,
                 individualImmunityWins: true,
+                tribeImmunityWins: true,
                 individualRewardWins: true,
                 advantagesFound: true,
                 idolsPlayedSuccessfully: true,
@@ -319,6 +321,7 @@ export async function PUT(
         survived: boolean;
         eliminated: boolean;
         individualImmunityWins: number;
+        tribeImmunityWins: number;
         individualRewardWins: number;
         advantagesFound: number;
         idolsPlayedSuccessfully: number;
@@ -329,6 +332,7 @@ export async function PUT(
 
       for (const row of body.results) {
         const individualImmunityWins = parseNonNegativeInt(row.individualImmunityWins);
+        const tribeImmunityWins = parseNonNegativeInt(row.tribeImmunityWins);
         const individualRewardWins = parseNonNegativeInt(row.individualRewardWins);
         const advantagesFound = parseNonNegativeInt(row.advantagesFound);
         const idolsPlayedSuccessfully = parseNonNegativeInt(row.idolsPlayedSuccessfully);
@@ -336,6 +340,7 @@ export async function PUT(
 
         if (
           individualImmunityWins == null ||
+          tribeImmunityWins == null ||
           individualRewardWins == null ||
           advantagesFound == null ||
           idolsPlayedSuccessfully == null ||
@@ -367,6 +372,7 @@ export async function PUT(
           survived,
           eliminated,
           individualImmunityWins,
+          tribeImmunityWins,
           individualRewardWins,
           advantagesFound,
           idolsPlayedSuccessfully,
@@ -461,6 +467,7 @@ export async function PUT(
             survived: row.survived,
             eliminated: row.eliminated,
             individualImmunityWins: row.individualImmunityWins,
+            tribeImmunityWins: row.tribeImmunityWins,
             individualRewardWins: row.individualRewardWins,
             advantagesFound: row.advantagesFound,
             idolsPlayedSuccessfully: row.idolsPlayedSuccessfully,

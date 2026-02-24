@@ -278,6 +278,7 @@ export async function recomputeSurvivorWeekScores(
         survived: true,
         eliminated: true,
         individualImmunityWins: true,
+        tribeImmunityWins: true,
         individualRewardWins: true,
         advantagesFound: true,
         idolsPlayedSuccessfully: true,
@@ -416,11 +417,11 @@ export async function recomputeSurvivorWeekScores(
       castawayName: string;
       points: {
         survived: number;
-        immunity: number;
+        individualImmunity: number;
+        tribeImmunity: number;
         reward: number;
         idolFind: number;
         idolPlay: number;
-        zeroVotePostMerge: number;
         confessionalLeader: number;
         eliminated: number;
         endgamePlacement: number;
@@ -437,11 +438,11 @@ export async function recomputeSurvivorWeekScores(
           castawayName: castaway.castawayName,
           points: {
             survived: 0,
-            immunity: 0,
+            individualImmunity: 0,
+            tribeImmunity: 0,
             reward: 0,
             idolFind: 0,
             idolPlay: 0,
-            zeroVotePostMerge: 0,
             confessionalLeader: 0,
             eliminated: 0,
             endgamePlacement: 0,
@@ -453,9 +454,11 @@ export async function recomputeSurvivorWeekScores(
 
       const points = {
         survived: result.survived ? SURVIVOR_V1_RULES.performance.survived : 0,
-        immunity:
+        individualImmunity:
           result.individualImmunityWins *
           SURVIVOR_V1_RULES.performance.individualImmunityWin,
+        tribeImmunity:
+          result.tribeImmunityWins * SURVIVOR_V1_RULES.performance.tribeImmunityWin,
         reward:
           result.individualRewardWins *
           SURVIVOR_V1_RULES.performance.individualRewardWin,
@@ -463,10 +466,6 @@ export async function recomputeSurvivorWeekScores(
         idolPlay:
           result.idolsPlayedSuccessfully *
           SURVIVOR_V1_RULES.performance.idolPlaySuccessful,
-        zeroVotePostMerge:
-          isMergeEpisode && !result.eliminated && result.votesReceived === 0
-            ? SURVIVOR_V1_RULES.performance.zeroVotePostMerge
-            : 0,
         confessionalLeader: result.confessionalLeader
           ? SURVIVOR_V1_RULES.performance.confessionalLeader
           : 0,
@@ -476,11 +475,11 @@ export async function recomputeSurvivorWeekScores(
 
       const subtotal =
         points.survived +
-        points.immunity +
+        points.individualImmunity +
+        points.tribeImmunity +
         points.reward +
         points.idolFind +
         points.idolPlay +
-        points.zeroVotePostMerge +
         points.confessionalLeader +
         points.eliminated +
         points.endgamePlacement;

@@ -58,19 +58,24 @@ export async function POST(
       { status: 400 }
     );
   }
-  if (castawayCount % members.length !== 0) {
+  if (members.length > 8) {
     return NextResponse.json(
       {
-        error:
-          "Draft requires equal picks and full-cast drafting. Member count must divide cast count.",
+        error: "Survivor draft supports between 2 and 8 league members.",
       },
       { status: 400 }
     );
   }
 
-  const picksPerEntry = castawayCount / members.length;
+  const picksPerEntry = Math.floor(castawayCount / members.length);
+  if (picksPerEntry < 1) {
+    return NextResponse.json(
+      { error: "Not enough castaways to give each player at least one pick." },
+      { status: 400 }
+    );
+  }
   const totalRounds = picksPerEntry;
-  const totalPicks = castawayCount;
+  const totalPicks = picksPerEntry * members.length;
 
   try {
     const result = await prisma.$transaction(async (tx) => {

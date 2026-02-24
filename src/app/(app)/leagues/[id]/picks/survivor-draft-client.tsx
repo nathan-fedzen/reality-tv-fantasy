@@ -52,6 +52,7 @@ type DraftStateResponse = {
     memberCount: number;
     castawayCount: number;
     picksPerEntry: number | null;
+    undraftedCastawayCount: number;
   };
   draft: {
     id: string | null;
@@ -204,7 +205,7 @@ export default function SurvivorDraftClient({ leagueId }: { leagueId: string }) 
 
   if (loading && !state) {
     return (
-      <section className="rounded-3xl border border-border bg-card shadow-sm p-5">
+      <section className="rounded-3xl border border-border bg-card p-5 shadow-sm">
         <p className="text-sm text-muted-foreground">Loading draft room...</p>
       </section>
     );
@@ -212,7 +213,7 @@ export default function SurvivorDraftClient({ leagueId }: { leagueId: string }) 
 
   if (!state) {
     return (
-      <section className="rounded-3xl border border-border bg-card shadow-sm p-5">
+      <section className="rounded-3xl border border-border bg-card p-5 shadow-sm">
         <p className="text-sm text-destructive">{error ?? "Draft room unavailable."}</p>
       </section>
     );
@@ -220,20 +221,18 @@ export default function SurvivorDraftClient({ leagueId }: { leagueId: string }) 
 
   return (
     <div className="space-y-6">
-      <section className="rounded-3xl border border-border bg-card shadow-sm p-5 space-y-3">
+      <section className="space-y-3 rounded-3xl border border-border bg-card p-5 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-base font-semibold">Survivor Snake Draft</h2>
-            <p className="text-sm text-muted-foreground">
-              Status: {state.draft.status}
-            </p>
+            <p className="text-sm text-muted-foreground">Status: {state.draft.status}</p>
           </div>
 
           {state.draft.status === "NOT_STARTED" && state.viewer.isCommissioner && (
             <button
               onClick={startDraft}
               disabled={!state.startChecks.canStart || busy}
-              className="rounded-2xl bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold disabled:opacity-50"
+              className="rounded-2xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50"
             >
               {busy ? "Starting..." : "Start Draft"}
             </button>
@@ -243,20 +242,21 @@ export default function SurvivorDraftClient({ leagueId }: { leagueId: string }) 
         <p className="text-sm text-muted-foreground">
           Members: {state.startChecks.memberCount} · Castaways: {state.startChecks.castawayCount}
           {" · "}
-          Picks per entry: {state.draft.picksPerEntry ?? "—"}
+          Picks per entry: {state.draft.picksPerEntry ?? "-"}
+          {" · "}
+          Undrafted: {state.startChecks.undraftedCastawayCount}
         </p>
 
         {state.draft.currentTurn && (
           <p className="text-sm">
-            Current turn:{" "}
-            <span className="font-semibold">{state.draft.currentTurn.displayName}</span>
+            Current turn: <span className="font-semibold">{state.draft.currentTurn.displayName}</span>
             {" · "}
             Pick #{state.draft.currentTurn.overallPick} (Round {state.draft.currentTurn.round})
           </p>
         )}
 
         {state.draft.status === "NOT_STARTED" && state.startChecks.issues.length > 0 && (
-          <ul className="text-sm text-amber-700 list-disc pl-5 space-y-1">
+          <ul className="list-disc space-y-1 pl-5 text-sm text-amber-700">
             {state.startChecks.issues.map((issue) => (
               <li key={issue}>{issue}</li>
             ))}
@@ -271,12 +271,12 @@ export default function SurvivorDraftClient({ leagueId }: { leagueId: string }) 
         )}
       </section>
 
-      <section className="rounded-3xl border border-border bg-card shadow-sm p-5">
+      <section className="rounded-3xl border border-border bg-card p-5 shadow-sm">
         <h3 className="text-sm font-semibold">Draft Order</h3>
         {state.draft.seats.length === 0 ? (
           <p className="mt-2 text-sm text-muted-foreground">Seats will appear when draft starts.</p>
         ) : (
-          <ul className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+          <ul className="mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
             {state.draft.seats.map((seat) => (
               <li
                 key={seat.seat}
@@ -290,29 +290,26 @@ export default function SurvivorDraftClient({ leagueId }: { leagueId: string }) 
         )}
       </section>
 
-      <section className="rounded-3xl border border-border bg-card shadow-sm p-5">
+      <section className="rounded-3xl border border-border bg-card p-5 shadow-sm">
         <h3 className="text-sm font-semibold">Cast Board</h3>
         <p className="mt-1 text-xs text-muted-foreground">
           Select an undrafted castaway when it is your turn.
         </p>
 
-        <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {state.castaways.map((castaway) => {
             const drafted = !!castaway.draftedBy;
             const canPick =
-              state.draft.status === "IN_PROGRESS" &&
-              state.draft.isMyTurn &&
-              !drafted &&
-              !busy;
+              state.draft.status === "IN_PROGRESS" && state.draft.isMyTurn && !drafted && !busy;
 
             return (
               <button
                 key={castaway.id}
                 disabled={!canPick}
                 onClick={() => makePick(castaway.id)}
-                className="text-left rounded-xl border border-border bg-background/60 px-3 py-2 disabled:opacity-60"
+                className="rounded-xl border border-border bg-background/60 px-3 py-2 text-left disabled:opacity-60"
               >
-                <div className="font-medium truncate">{castaway.name}</div>
+                <div className="truncate font-medium">{castaway.name}</div>
                 <div className="text-xs text-muted-foreground">
                   {castaway.tribe ?? "Unassigned"}
                 </div>
@@ -327,12 +324,12 @@ export default function SurvivorDraftClient({ leagueId }: { leagueId: string }) 
         </div>
       </section>
 
-      <section className="rounded-3xl border border-border bg-card shadow-sm p-5">
+      <section className="rounded-3xl border border-border bg-card p-5 shadow-sm">
         <h3 className="text-sm font-semibold">Rosters</h3>
         {state.draft.seats.length === 0 ? (
           <p className="mt-2 text-sm text-muted-foreground">Rosters populate after draft starts.</p>
         ) : (
-          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
             {state.draft.seats.map((seat) => {
               const picks = picksByUser.get(seat.userId) ?? [];
               return (
@@ -362,7 +359,7 @@ export default function SurvivorDraftClient({ leagueId }: { leagueId: string }) 
         )}
       </section>
 
-      <section className="rounded-3xl border border-border bg-card shadow-sm p-5">
+      <section className="rounded-3xl border border-border bg-card p-5 shadow-sm">
         <h3 className="text-sm font-semibold">Pick History</h3>
         {state.draft.picks.length === 0 ? (
           <p className="mt-2 text-sm text-muted-foreground">No picks submitted yet.</p>

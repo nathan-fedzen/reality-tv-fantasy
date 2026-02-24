@@ -63,8 +63,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid visibility" }, { status: 400 });
   }
   if (!Number.isInteger(maxPlayers) || maxPlayers < 2 || maxPlayers > 50) {
+    return NextResponse.json({ error: "maxPlayers must be between 2 and 50" }, { status: 400 });
+  }
+  if (body.showType === "SURVIVOR" && maxPlayers > 8) {
     return NextResponse.json(
-      { error: "maxPlayers must be between 2 and 50" },
+      { error: "Survivor leagues support between 2 and 8 players." },
       { status: 400 }
     );
   }

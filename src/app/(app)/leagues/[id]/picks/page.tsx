@@ -52,7 +52,7 @@ export default async function PicksPage({
                   Draft - {league.name}
                 </h1>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Snake order, server-enforced turns, and full-cast drafting.
+                  Snake order, server-enforced turns, and equal picks per player.
                 </p>
               </div>
 

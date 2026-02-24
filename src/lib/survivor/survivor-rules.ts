@@ -2,10 +2,10 @@ export const SURVIVOR_V1_RULES = {
   performance: {
     survived: 2,
     individualImmunityWin: 5,
+    tribeImmunityWin: 3,
     individualRewardWin: 3,
     idolFind: 4,
     idolPlaySuccessful: 6,
-    zeroVotePostMerge: 3,
     confessionalLeader: 4,
     eliminated: -5,
   },

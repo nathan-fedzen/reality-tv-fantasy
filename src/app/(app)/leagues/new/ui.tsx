@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LeagueVisibility, ShowType } from "@prisma/client";
 
@@ -22,7 +22,7 @@ export default function CreateLeagueForm() {
     const [name, setName] = useState("");
     const [showType, setShowType] = useState<ShowType>(ShowType.SURVIVOR);
     const [visibility, setVisibility] = useState<LeagueVisibility>(LeagueVisibility.PRIVATE);
-    const [maxPlayers, setMaxPlayers] = useState(12);
+    const [maxPlayers, setMaxPlayers] = useState(8);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -31,6 +31,12 @@ export default function CreateLeagueForm() {
             ? "Anyone with the link can join."
             : "Only people with the invite link can join.";
     }, [visibility]);
+
+    useEffect(() => {
+        if (showType === ShowType.SURVIVOR) {
+            setMaxPlayers((prev) => Math.min(8, Math.max(2, prev || 8)));
+        }
+    }, [showType]);
 
     async function onSubmit(e: React.FormEvent) {
   e.preventDefault();
@@ -134,11 +140,16 @@ export default function CreateLeagueForm() {
                             id="maxPlayers"
                             type="number"
                             min={2}
-                            max={50}
+                            max={showType === ShowType.SURVIVOR ? 8 : 50}
                             value={maxPlayers}
                             onChange={(e) => setMaxPlayers(Number(e.target.value))}
                             required
                         />
+                        {showType === ShowType.SURVIVOR && (
+                            <p className="text-xs text-muted-foreground">
+                                Survivor leagues support 2-8 players.
+                            </p>
+                        )}
                     </div>
 
                     {error && (

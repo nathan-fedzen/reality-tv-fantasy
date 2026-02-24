@@ -511,6 +511,7 @@ model SurvivorEpisodeCastawayResult {
   survived                Boolean  @default(true)
   eliminated              Boolean  @default(false)
   individualImmunityWins  Int      @default(0)
+  tribeImmunityWins       Int      @default(0)
   individualRewardWins    Int      @default(0)
   advantagesFound         Int      @default(0)
   idolsPlayedSuccessfully Int      @default(0)

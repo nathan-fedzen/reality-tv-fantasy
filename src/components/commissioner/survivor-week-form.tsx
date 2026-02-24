@@ -22,6 +22,7 @@ type ExistingResult = {
   survived: boolean;
   eliminated: boolean;
   individualImmunityWins: number;
+  tribeImmunityWins: number;
   individualRewardWins: number;
   advantagesFound: number;
   idolsPlayedSuccessfully: number;
@@ -35,6 +36,7 @@ type RowState = {
   survived: boolean;
   eliminated: boolean;
   individualImmunityWins: number;
+  tribeImmunityWins: number;
   individualRewardWins: number;
   advantagesFound: number;
   idolsPlayedSuccessfully: number;
@@ -97,6 +99,7 @@ export default function SurvivorWeekForm(props: {
         survived: existing?.survived ?? true,
         eliminated: existing?.eliminated ?? false,
         individualImmunityWins: existing?.individualImmunityWins ?? 0,
+        tribeImmunityWins: existing?.tribeImmunityWins ?? 0,
         individualRewardWins: existing?.individualRewardWins ?? 0,
         advantagesFound: existing?.advantagesFound ?? 0,
         idolsPlayedSuccessfully: existing?.idolsPlayedSuccessfully ?? 0,
@@ -141,6 +144,7 @@ export default function SurvivorWeekForm(props: {
             survived: row.survived,
             eliminated: row.eliminated,
             individualImmunityWins: Number(row.individualImmunityWins),
+            tribeImmunityWins: Number(row.tribeImmunityWins),
             individualRewardWins: Number(row.individualRewardWins),
             advantagesFound: Number(row.advantagesFound),
             idolsPlayedSuccessfully: Number(row.idolsPlayedSuccessfully),
@@ -254,7 +258,7 @@ export default function SurvivorWeekForm(props: {
           </label>
 
           <label className="text-xs sm:col-span-2">
-            Immunity winner (optional)
+            Individual immunity winner (optional)
             <select
               className="mt-1 w-full rounded-md border px-2 py-2 text-sm"
               value={immunityWinnerCastawayId}
@@ -282,7 +286,6 @@ export default function SurvivorWeekForm(props: {
         <div className="space-y-3">
           {rows.map((row) => {
             const castaway = castaways.find((c) => c.id === row.castawayId);
-            const zeroVotePostMerge = isMerge && !row.eliminated && row.votesReceived === 0;
 
             return (
               <div key={row.castawayId} className="rounded-md border p-3 space-y-2">
@@ -291,11 +294,6 @@ export default function SurvivorWeekForm(props: {
                     <div className="text-sm font-medium">{castaway?.name ?? row.castawayId}</div>
                     <div className="text-xs text-muted-foreground">{castaway?.tribe ?? "No tribe"}</div>
                   </div>
-                  {zeroVotePostMerge && (
-                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">
-                      Zero-vote bonus
-                    </span>
-                  )}
                 </div>
 
                 <div className="grid gap-2 sm:grid-cols-3">
@@ -332,9 +330,9 @@ export default function SurvivorWeekForm(props: {
                   </label>
                 </div>
 
-                <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
+                <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-7">
                   <label className="text-xs">
-                    Immunity wins
+                    Individual immunity wins
                     <input
                       type="number"
                       min={0}
@@ -343,6 +341,22 @@ export default function SurvivorWeekForm(props: {
                       onChange={(e) =>
                         updateRow(row.castawayId, {
                           individualImmunityWins: Number(e.target.value || 0),
+                        })
+                      }
+                      disabled={disabled || isPending}
+                    />
+                  </label>
+
+                  <label className="text-xs">
+                    Tribe immunity wins
+                    <input
+                      type="number"
+                      min={0}
+                      className="mt-1 w-full rounded-md border px-2 py-1 text-sm"
+                      value={row.tribeImmunityWins}
+                      onChange={(e) =>
+                        updateRow(row.castawayId, {
+                          tribeImmunityWins: Number(e.target.value || 0),
                         })
                       }
                       disabled={disabled || isPending}

@@ -104,15 +104,19 @@ export async function GET(
   const castawayCount = castaways.length;
   const draftStatus = draft?.status ?? "NOT_STARTED";
 
-  const canSplitEvenly = memberCount > 0 && castawayCount % memberCount === 0;
-  const computedPicksPerEntry = canSplitEvenly ? castawayCount / memberCount : null;
+  const computedPicksPerEntry =
+    memberCount > 0 ? Math.floor(castawayCount / memberCount) : null;
+  const undraftedCastawayCount =
+    memberCount > 0 ? castawayCount - memberCount * (computedPicksPerEntry ?? 0) : 0;
+  const computedTotalPicks = (computedPicksPerEntry ?? 0) * memberCount;
 
   const startIssues: string[] = [];
   if (!isCommissioner) startIssues.push("Only the commissioner can start the draft.");
   if (memberCount < 2) startIssues.push("At least 2 league members are required.");
+  if (memberCount > 8) startIssues.push("Survivor draft supports a maximum of 8 players.");
   if (castawayCount === 0) startIssues.push("No castaways are seeded for this league.");
-  if (!canSplitEvenly) {
-    startIssues.push("Cast count must divide evenly across members for equal picks.");
+  if ((computedPicksPerEntry ?? 0) < 1) {
+    startIssues.push("Not enough castaways to give each player at least one pick.");
   }
   if (draftStatus !== "NOT_STARTED") {
     startIssues.push("Draft has already started.");
@@ -182,13 +186,14 @@ export async function GET(
       memberCount,
       castawayCount,
       picksPerEntry: computedPicksPerEntry,
+      undraftedCastawayCount,
     },
     draft: {
       id: draft?.id ?? null,
       status: draftStatus,
       picksPerEntry: draft?.picksPerEntry ?? computedPicksPerEntry,
       totalRounds: draft?.totalRounds ?? computedPicksPerEntry,
-      totalPicks: draft?.totalPicks ?? castawayCount,
+      totalPicks: draft?.totalPicks ?? computedTotalPicks,
       currentOverallPick: draft?.currentOverallPick ?? null,
       startedAt: draft?.startedAt ?? null,
       completedAt: draft?.completedAt ?? null,

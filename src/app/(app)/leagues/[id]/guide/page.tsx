@@ -223,6 +223,10 @@ export default async function SurvivorPlayerGuidePage({
       points: SURVIVOR_V1_RULES.performance.individualImmunityWin,
     },
     {
+      label: "Tribe immunity win",
+      points: SURVIVOR_V1_RULES.performance.tribeImmunityWin,
+    },
+    {
       label: "Individual reward win",
       points: SURVIVOR_V1_RULES.performance.individualRewardWin,
     },
@@ -230,10 +234,6 @@ export default async function SurvivorPlayerGuidePage({
     {
       label: "Idol played successfully",
       points: SURVIVOR_V1_RULES.performance.idolPlaySuccessful,
-    },
-    {
-      label: "Zero-vote survivor (post-merge)",
-      points: SURVIVOR_V1_RULES.performance.zeroVotePostMerge,
     },
     {
       label: "Confessional leader",
@@ -354,7 +354,8 @@ export default async function SurvivorPlayerGuidePage({
                 </p>
                 <p className="mt-1 text-sm">
                   Draft is seat-based snake order. Odd rounds go forward, even rounds
-                  reverse. Full cast is drafted with equal picks per player.
+                  reverse. Everyone gets the same number of picks, and extra castaways can
+                  remain undrafted.
                 </p>
               </div>
               <div className="rounded-2xl border border-border bg-background/60 p-3">
@@ -401,6 +402,10 @@ export default async function SurvivorPlayerGuidePage({
             <ul className="mt-3 space-y-2 text-sm">
               <li className="rounded-xl border border-border bg-background/60 p-3">
                 Weekly prediction: one submission only.
+              </li>
+              <li className="rounded-xl border border-border bg-background/60 p-3">
+                Survivor leagues run with 2-8 players. Everyone gets equal draft picks, so
+                some castaways may stay undrafted.
               </li>
               <li className="rounded-xl border border-border bg-background/60 p-3">
                 Prediction scores are hard-capped at{" "}
