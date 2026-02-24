@@ -1,9 +1,17 @@
 import { NextResponse } from "next/server";
+import { randomInt } from "node:crypto";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+function shuffleInPlace<T>(values: T[]) {
+  for (let i = values.length - 1; i > 0; i -= 1) {
+    const j = randomInt(i + 1);
+    [values[i], values[j]] = [values[j], values[i]];
+  }
+}
 
 export async function POST(
   _req: Request,
@@ -100,6 +108,7 @@ export async function POST(
         });
         orderedEntries.push(entry);
       }
+      shuffleInPlace(orderedEntries);
 
       await tx.survivorDraftPick.deleteMany({
         where: { draftId: draft.id },

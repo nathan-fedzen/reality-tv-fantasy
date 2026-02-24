@@ -8,7 +8,8 @@
     "migrate:deploy": "prisma migrate deploy",
     "dev": "next dev",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "mock:survivor-season": "npx tsx scripts/mock-survivor-season.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.1",
