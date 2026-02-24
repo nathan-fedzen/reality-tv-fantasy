@@ -176,7 +176,7 @@ export default function LeagueChatBubble(props: {
       <button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
-        className="fixed z-40 flex h-14 w-14 items-center justify-center rounded-full border border-primary/40 bg-primary/20 text-primary shadow-lg backdrop-blur-sm transition hover:bg-primary/30 right-[max(1rem,env(safe-area-inset-right))] bottom-[max(1rem,env(safe-area-inset-bottom))]"
+        className="fixed z-40 flex h-14 w-14 items-center justify-center rounded-full border border-primary/40 bg-primary/20 text-primary shadow-lg backdrop-blur-sm transition hover:bg-primary/30 right-[max(1rem,env(safe-area-inset-right))] bottom-[max(1.5rem,calc(env(safe-area-inset-bottom)+0.5rem))]"
         aria-expanded={isOpen}
         aria-label={toggleLabel}
       >
@@ -189,12 +189,12 @@ export default function LeagueChatBubble(props: {
           strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
-          className="h-6 w-6"
+          className="h-7 w-7"
           aria-hidden="true"
         >
           <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
         </svg>
-        <span className="absolute -bottom-6 text-[11px] font-semibold tracking-wide">
+        <span className="absolute left-1/2 top-full mt-1 -translate-x-1/2 whitespace-nowrap text-[11px] font-semibold leading-none tracking-wide">
           Chat
         </span>
         {!isOpen && unreadCount > 0 && (
