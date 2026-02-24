@@ -1,8 +1,9 @@
-import { redirect } from "next/navigation";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import DragRaceWeekForm from "@/components/commissioner/drag-race-week-form";
+import SurvivorWeekForm from "@/components/commissioner/survivor-week-form";
 
 export default async function WeekPage({
   params,
@@ -40,23 +41,32 @@ export default async function WeekPage({
 
   const isCommissioner = league.createdById === user.id;
 
-  // Load existing episode + results (if any)
   const episode = await prisma.episode.findUnique({
     where: { leagueId_week: { leagueId: league.id, week: weekNum } },
     include: {
       results: true,
       finalePlacements: true,
       finaleExtras: true,
+      survivorMeta: true,
+      survivorCastawayResults: true,
     },
   });
 
-  // Load queens for the season (Drag Race)
   const queens =
-    league.seasonKey
+    league.seasonKey && league.showType === "DRAG_RACE"
       ? await prisma.queen.findMany({
-        where: { seasonKey: league.seasonKey },
-        orderBy: { name: "asc" },
-      })
+          where: { seasonKey: league.seasonKey },
+          orderBy: { name: "asc" },
+        })
+      : [];
+
+  const castaways =
+    league.showType === "SURVIVOR"
+      ? await prisma.survivorCastaway.findMany({
+          where: { leagueId: league.id },
+          orderBy: { name: "asc" },
+          select: { id: true, name: true, tribe: true },
+        })
       : [];
 
   return (
@@ -77,7 +87,6 @@ export default async function WeekPage({
         </div>
       )}
 
-      {/* Ruleset switch (MVP: Drag Race only implemented) */}
       {league.showType === "DRAG_RACE" ? (
         <div className="mt-6">
           <DragRaceWeekForm
@@ -92,9 +101,42 @@ export default async function WeekPage({
             hasStarted={hasStarted}
           />
         </div>
+      ) : league.showType === "SURVIVOR" ? (
+        <div className="mt-6">
+          <SurvivorWeekForm
+            leagueId={league.id}
+            week={weekNum}
+            castaways={castaways}
+            existingMeta={
+              episode?.survivorMeta
+                ? {
+                    isMerge: episode.survivorMeta.isMerge,
+                    isNonElimination: episode.survivorMeta.isNonElimination,
+                    bootCastawayId: episode.survivorMeta.bootCastawayId,
+                    bootVoteCount: episode.survivorMeta.bootVoteCount,
+                    immunityWinnerCastawayId: episode.survivorMeta.immunityWinnerCastawayId,
+                  }
+                : null
+            }
+            existingResults={(episode?.survivorCastawayResults ?? []).map((row) => ({
+              castawayId: row.castawayId,
+              survived: row.survived,
+              eliminated: row.eliminated,
+              individualImmunityWins: row.individualImmunityWins,
+              individualRewardWins: row.individualRewardWins,
+              advantagesFound: row.advantagesFound,
+              idolsPlayedSuccessfully: row.idolsPlayedSuccessfully,
+              votesReceived: row.votesReceived,
+              confessionalLeader: row.confessionalLeader,
+              endgamePlacement: row.endgamePlacement,
+            }))}
+            isCommissioner={isCommissioner}
+            hasStarted={hasStarted}
+          />
+        </div>
       ) : (
         <div className="mt-6 rounded-md border p-3 text-sm">
-          Weekly results UI for this ruleset isn’t implemented yet.
+          Weekly results UI for this ruleset is not implemented yet.
         </div>
       )}
     </main>

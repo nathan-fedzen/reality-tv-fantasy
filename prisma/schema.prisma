@@ -516,6 +516,7 @@ model SurvivorEpisodeCastawayResult {
   idolsPlayedSuccessfully Int      @default(0)
   votesReceived           Int      @default(0)
   confessionalLeader      Boolean  @default(false)
+  endgamePlacement        Int?
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
 
