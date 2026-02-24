@@ -55,6 +55,7 @@ function initials(name: string) {
 
 type SurvivorTiebreakPrediction = {
   leagueEntryId: string;
+  tribals: Prisma.JsonValue | null;
   bootCastawayId: string | null;
   secondaryBootCastawayId: string | null;
   episode: {
@@ -62,20 +63,39 @@ type SurvivorTiebreakPrediction = {
   };
 };
 
+function predictedBootCastawayIds(prediction: SurvivorTiebreakPrediction) {
+  const fromTribals = new Set<string>();
+  if (Array.isArray(prediction.tribals)) {
+    for (const row of prediction.tribals) {
+      if (!row || typeof row !== "object" || Array.isArray(row)) continue;
+      const castawayId = (row as Record<string, unknown>).bootCastawayId;
+      if (typeof castawayId !== "string") continue;
+      const trimmed = castawayId.trim();
+      if (trimmed) fromTribals.add(trimmed);
+    }
+  }
+
+  if (fromTribals.size > 0) {
+    return Array.from(fromTribals);
+  }
+
+  return Array.from(
+    new Set(
+      [prediction.bootCastawayId, prediction.secondaryBootCastawayId]
+        .filter((value): value is string => !!value)
+        .map((value) => value.trim())
+        .filter(Boolean)
+    )
+  );
+}
+
 function countCorrectEliminationPredictions(
   predictions: SurvivorTiebreakPrediction[]
 ) {
   const result = new Map<string, number>();
 
   for (const prediction of predictions) {
-    const predictedBoots = Array.from(
-      new Set(
-        [prediction.bootCastawayId, prediction.secondaryBootCastawayId]
-          .filter((value): value is string => !!value)
-          .map((value) => value.trim())
-          .filter(Boolean)
-      )
-    );
+    const predictedBoots = predictedBootCastawayIds(prediction);
     if (predictedBoots.length === 0) continue;
 
     const actualBoots = new Set(
@@ -192,10 +212,10 @@ export default async function LeaderboardPage({
     const survivorPredictions = await prisma.survivorWeeklyPrediction.findMany({
       where: {
         leagueId,
-        OR: [{ bootCastawayId: { not: null } }, { secondaryBootCastawayId: { not: null } }],
       },
       select: {
         leagueEntryId: true,
+        tribals: true,
         bootCastawayId: true,
         secondaryBootCastawayId: true,
         episode: {
@@ -395,10 +415,6 @@ export default async function LeaderboardPage({
         const survivorPredictions = await prisma.survivorWeeklyPrediction.findMany({
           where: {
             leagueId,
-            OR: [
-              { bootCastawayId: { not: null } },
-              { secondaryBootCastawayId: { not: null } },
-            ],
             episode: {
               leagueId,
               week: { lte: week },
@@ -406,6 +422,7 @@ export default async function LeaderboardPage({
           },
           select: {
             leagueEntryId: true,
+            tribals: true,
             bootCastawayId: true,
             secondaryBootCastawayId: true,
             episode: {

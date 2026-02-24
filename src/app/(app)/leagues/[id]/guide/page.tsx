@@ -265,6 +265,22 @@ export default async function SurvivorPlayerGuidePage({
       label: "Safe pick survives",
       points: SURVIVOR_V1_RULES.weeklyPredictions.safePickSurvives,
     },
+    {
+      label: "Finale: exact 4th place",
+      points: SURVIVOR_V1_RULES.weeklyPredictions.finalPlacements.fourthPlaceExact,
+    },
+    {
+      label: "Finale: exact 3rd place",
+      points: SURVIVOR_V1_RULES.weeklyPredictions.finalPlacements.thirdPlaceExact,
+    },
+    {
+      label: "Finale: exact 2nd place",
+      points: SURVIVOR_V1_RULES.weeklyPredictions.finalPlacements.secondPlaceExact,
+    },
+    {
+      label: "Finale: exact winner (1st)",
+      points: SURVIVOR_V1_RULES.weeklyPredictions.finalPlacements.firstPlaceExact,
+    },
   ];
 
   const placementRows = Object.entries(SURVIVOR_V1_RULES.endgamePlacementPoints)
@@ -368,6 +384,8 @@ export default async function SurvivorPlayerGuidePage({
                   Submit once per week: boot pick, vote count, immunity, idol yes/no,
                   and a safe pick. Week 1 has two ordered sets (1st tribal and 2nd tribal):
                   boot pick, boot vote count, immunity winner, and safe pick for each.
+                  Final week adds required Final 4 picks (4th, 3rd, 2nd, 1st) from
+                  remaining survivors.
                 </p>
               </div>
               <div className="rounded-2xl border border-border bg-background/60 p-3">
@@ -419,7 +437,7 @@ export default async function SurvivorPlayerGuidePage({
                 <span className="font-semibold">
                   {SURVIVOR_V1_RULES.weeklyPredictions.maxPoints}
                 </span>{" "}
-                points.
+                points for regular weekly picks, plus a finale Final 4 bonus.
               </li>
               <li className="rounded-xl border border-border bg-background/60 p-3">
                 Last Survivor Standing bonus:{" "}
@@ -467,7 +485,7 @@ export default async function SurvivorPlayerGuidePage({
           <article className="rounded-3xl border border-border bg-card p-5 shadow-sm">
             <h2 className="text-lg font-semibold">Weekly prediction scoring</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Submit before lock. Raw points are capped automatically.
+              Submit before lock. Core weekly prediction points are capped automatically.
             </p>
             <div className="mt-4 space-y-2">
               {predictionRows.map((row) => (
@@ -484,6 +502,10 @@ export default async function SurvivorPlayerGuidePage({
               Weekly prediction max:{" "}
               <span className="font-semibold">
                 {SURVIVOR_V1_RULES.weeklyPredictions.maxPoints} points
+              </span>
+              . Finale Final 4 bonus max:{" "}
+              <span className="font-semibold">
+                {SURVIVOR_V1_RULES.weeklyPredictions.finalPlacements.maxPoints} points
               </span>
               .
             </div>

@@ -16,6 +16,13 @@ export const SURVIVOR_V1_RULES = {
     immunityWinnerExact: 5,
     idolPlayedYesNo: 4,
     safePickSurvives: 8,
+    finalPlacements: {
+      fourthPlaceExact: 4,
+      thirdPlaceExact: 6,
+      secondPlaceExact: 8,
+      firstPlaceExact: 12,
+      maxPoints: 30,
+    },
     maxPoints: 35,
   },
   bootOrder: {

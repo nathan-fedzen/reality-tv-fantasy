@@ -11,6 +11,8 @@ type SurvivorEpisodeWithResults = Prisma.EpisodeGetPayload<{
     id: true;
     survivorMeta: {
       select: {
+        tribalCount: true;
+        tribals: true;
         isMerge: true;
         isNonElimination: true;
         bootCastawayId: true;
@@ -89,6 +91,8 @@ export default async function SurvivorCommissionerWeekPage({
         id: true,
         survivorMeta: {
           select: {
+            tribalCount: true,
+            tribals: true,
             isMerge: true,
             isNonElimination: true,
             bootCastawayId: true,
@@ -170,6 +174,8 @@ export default async function SurvivorCommissionerWeekPage({
             existingMeta={
               survivorEpisode?.survivorMeta
                 ? {
+                    tribalCount: survivorEpisode.survivorMeta.tribalCount,
+                    tribals: survivorEpisode.survivorMeta.tribals,
                     isMerge: survivorEpisode.survivorMeta.isMerge,
                     isNonElimination: survivorEpisode.survivorMeta.isNonElimination,
                     bootCastawayId: survivorEpisode.survivorMeta.bootCastawayId,

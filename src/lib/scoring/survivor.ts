@@ -4,6 +4,7 @@ import {
   survivorEndgamePlacementPoints,
   survivorPredictionPointsCapped,
 } from "@/lib/survivor/survivor-rules";
+import { SURVIVOR_SEASON_WEEKS } from "@/lib/survivor/season";
 
 type Tx = Omit<
   PrismaClient,
@@ -14,6 +15,94 @@ type BootOrderAward = {
   points: number;
   breakdown: Prisma.InputJsonObject;
 };
+
+type TribalOutcome = {
+  bootCastawayId: string | null;
+  bootVoteCount: number | null;
+  immunityWinnerCastawayId: string | null;
+};
+
+type TribalPrediction = TribalOutcome & {
+  safePickCastawayId: string | null;
+};
+
+type FinalPlacementPrediction = {
+  fourthPlaceCastawayId: string | null;
+  thirdPlaceCastawayId: string | null;
+  secondPlaceCastawayId: string | null;
+  firstPlaceCastawayId: string | null;
+};
+
+function jsonObject(
+  value: Prisma.JsonValue | null | undefined
+): Prisma.JsonObject | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as Prisma.JsonObject;
+}
+
+function jsonString(value: Prisma.JsonValue | undefined) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function jsonInt(value: Prisma.JsonValue | undefined) {
+  if (typeof value === "number" && Number.isInteger(value) && value >= 0) return value;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    if (Number.isInteger(parsed) && parsed >= 0) return parsed;
+  }
+  return null;
+}
+
+function parseTribalOutcomeArray(value: Prisma.JsonValue | null | undefined): TribalOutcome[] {
+  if (!Array.isArray(value)) return [];
+  const out: TribalOutcome[] = [];
+
+  for (const row of value) {
+    const obj = jsonObject(row);
+    if (!obj) continue;
+    out.push({
+      bootCastawayId: jsonString(obj.bootCastawayId),
+      bootVoteCount: jsonInt(obj.bootVoteCount),
+      immunityWinnerCastawayId: jsonString(obj.immunityWinnerCastawayId),
+    });
+  }
+
+  return out;
+}
+
+function parseTribalPredictionArray(
+  value: Prisma.JsonValue | null | undefined
+): TribalPrediction[] {
+  if (!Array.isArray(value)) return [];
+  const out: TribalPrediction[] = [];
+
+  for (const row of value) {
+    const obj = jsonObject(row);
+    if (!obj) continue;
+    out.push({
+      bootCastawayId: jsonString(obj.bootCastawayId),
+      bootVoteCount: jsonInt(obj.bootVoteCount),
+      immunityWinnerCastawayId: jsonString(obj.immunityWinnerCastawayId),
+      safePickCastawayId: jsonString(obj.safePickCastawayId),
+    });
+  }
+
+  return out;
+}
+
+function parseFinalPlacementPrediction(
+  value: Prisma.JsonValue | null | undefined
+): FinalPlacementPrediction {
+  const obj = jsonObject(value);
+  return {
+    fourthPlaceCastawayId: jsonString(obj?.fourthPlaceCastawayId),
+    thirdPlaceCastawayId: jsonString(obj?.thirdPlaceCastawayId),
+    secondPlaceCastawayId: jsonString(obj?.secondPlaceCastawayId),
+    firstPlaceCastawayId: jsonString(obj?.firstPlaceCastawayId),
+  };
+}
 
 async function computeBootOrderAwardsForEpisode(
   tx: Tx,
@@ -238,6 +327,7 @@ export async function recomputeSurvivorWeekScores(
     entries,
     draftPicks,
     castawayResults,
+    finalPlacementRows,
     predictions,
     bootOrderAwards,
     usedAdvantages,
@@ -250,6 +340,8 @@ export async function recomputeSurvivorWeekScores(
         week: true,
         survivorMeta: {
           select: {
+            tribalCount: true,
+            tribals: true,
             isMerge: true,
             isNonElimination: true,
             bootCastawayId: true,
@@ -291,11 +383,23 @@ export async function recomputeSurvivorWeekScores(
         endgamePlacement: true,
       },
     }),
+    tx.survivorEpisodeCastawayResult.findMany({
+      where: {
+        leagueId,
+        endgamePlacement: { gte: 1, lte: 4 },
+      },
+      select: {
+        castawayId: true,
+        endgamePlacement: true,
+      },
+    }),
     tx.survivorWeeklyPrediction.findMany({
       where: { leagueId, episodeId },
       select: {
         id: true,
         leagueEntryId: true,
+        tribals: true,
+        finalPlacements: true,
         bootCastawayId: true,
         secondaryBootCastawayId: true,
         bootVoteCount: true,
@@ -329,18 +433,52 @@ export async function recomputeSurvivorWeekScores(
   const actualBootCastawayIds = castawayResults
     .filter((row) => row.eliminated)
     .map((row) => row.castawayId);
-  const actualBootCastawayId =
+
+  const fallbackActualTribals: TribalOutcome[] = [];
+  const firstBootCastawayId =
     episode.survivorMeta?.bootCastawayId ?? actualBootCastawayIds[0] ?? null;
-  const actualSecondaryBootCastawayId =
+  const secondBootCastawayId =
     episode.survivorMeta?.secondaryBootCastawayId ??
-    actualBootCastawayIds.find((castawayId) => castawayId !== actualBootCastawayId) ??
+    actualBootCastawayIds.find((castawayId) => castawayId !== firstBootCastawayId) ??
     null;
-  const actualBootVoteCount = episode.survivorMeta?.bootVoteCount ?? null;
-  const actualSecondaryBootVoteCount = episode.survivorMeta?.secondaryBootVoteCount ?? null;
-  const actualImmunityWinnerCastawayId =
-    episode.survivorMeta?.immunityWinnerCastawayId ?? null;
-  const actualSecondaryImmunityWinnerCastawayId =
-    episode.survivorMeta?.secondaryImmunityWinnerCastawayId ?? null;
+
+  if (
+    firstBootCastawayId != null ||
+    episode.survivorMeta?.bootVoteCount != null ||
+    episode.survivorMeta?.immunityWinnerCastawayId != null
+  ) {
+    fallbackActualTribals.push({
+      bootCastawayId: firstBootCastawayId,
+      bootVoteCount: episode.survivorMeta?.bootVoteCount ?? null,
+      immunityWinnerCastawayId: episode.survivorMeta?.immunityWinnerCastawayId ?? null,
+    });
+  }
+
+  if (
+    secondBootCastawayId != null ||
+    episode.survivorMeta?.secondaryBootVoteCount != null ||
+    episode.survivorMeta?.secondaryImmunityWinnerCastawayId != null
+  ) {
+    fallbackActualTribals.push({
+      bootCastawayId: secondBootCastawayId,
+      bootVoteCount: episode.survivorMeta?.secondaryBootVoteCount ?? null,
+      immunityWinnerCastawayId:
+        episode.survivorMeta?.secondaryImmunityWinnerCastawayId ?? null,
+    });
+  }
+
+  if (fallbackActualTribals.length === 0 && actualBootCastawayIds.length > 0) {
+    for (const castawayId of actualBootCastawayIds) {
+      fallbackActualTribals.push({
+        bootCastawayId: castawayId,
+        bootVoteCount: null,
+        immunityWinnerCastawayId: null,
+      });
+    }
+  }
+
+  const metaTribals = parseTribalOutcomeArray(episode.survivorMeta?.tribals);
+  const actualTribals = metaTribals.length > 0 ? metaTribals : fallbackActualTribals;
   const actualIdolPlayed = castawayResults.some((row) => row.idolsPlayedSuccessfully > 0);
 
   await tx.leagueEntryScore.deleteMany({ where: { episodeId } });
@@ -362,6 +500,26 @@ export async function recomputeSurvivorWeekScores(
   const predictionByEntryId = new Map(
     predictions.map((prediction) => [prediction.leagueEntryId, prediction])
   );
+  const finalPlacementByCastaway = new Map<string, number>();
+  for (const row of finalPlacementRows) {
+    const placement = row.endgamePlacement;
+    if (placement == null) continue;
+    const existing = finalPlacementByCastaway.get(row.castawayId);
+    if (existing == null || placement < existing) {
+      finalPlacementByCastaway.set(row.castawayId, placement);
+    }
+  }
+  const actualCastawayByPlacement = new Map<number, string>();
+  for (const [castawayId, placement] of finalPlacementByCastaway.entries()) {
+    if (placement >= 1 && placement <= 4 && !actualCastawayByPlacement.has(placement)) {
+      actualCastawayByPlacement.set(placement, castawayId);
+    }
+  }
+  const hasResolvedFinal4 =
+    actualCastawayByPlacement.has(1) &&
+    actualCastawayByPlacement.has(2) &&
+    actualCastawayByPlacement.has(3) &&
+    actualCastawayByPlacement.has(4);
 
   const rows: Prisma.LeagueEntryScoreCreateManyInput[] = [];
   const advantageEffectTransactions: Prisma.SurvivorPointTransactionCreateManyInput[] = [];
@@ -527,61 +685,80 @@ export async function recomputeSurvivorWeekScores(
     let predictionBreakdown: Prisma.InputJsonObject | null = null;
 
     if (prediction) {
-      const firstBootExact =
-        prediction.bootCastawayId != null &&
-        actualBootCastawayId != null &&
-        prediction.bootCastawayId === actualBootCastawayId
-          ? 1
-          : 0;
-      const secondBootExact =
-        prediction.secondaryBootCastawayId != null &&
-        actualSecondaryBootCastawayId != null &&
-        prediction.secondaryBootCastawayId === actualSecondaryBootCastawayId
-          ? 1
-          : 0;
-      const bootExactHits = firstBootExact + secondBootExact;
+      const fallbackPredictedTribals: TribalPrediction[] = [];
+      if (
+        prediction.bootCastawayId != null ||
+        prediction.bootVoteCount != null ||
+        prediction.immunityWinnerCastawayId != null ||
+        prediction.safePickCastawayId != null
+      ) {
+        fallbackPredictedTribals.push({
+          bootCastawayId: prediction.bootCastawayId,
+          bootVoteCount: prediction.bootVoteCount,
+          immunityWinnerCastawayId: prediction.immunityWinnerCastawayId,
+          safePickCastawayId: prediction.safePickCastawayId,
+        });
+      }
+      if (
+        prediction.secondaryBootCastawayId != null ||
+        prediction.secondaryBootVoteCount != null ||
+        prediction.secondaryImmunityWinnerCastawayId != null ||
+        prediction.secondarySafePickCastawayId != null
+      ) {
+        fallbackPredictedTribals.push({
+          bootCastawayId: prediction.secondaryBootCastawayId,
+          bootVoteCount: prediction.secondaryBootVoteCount,
+          immunityWinnerCastawayId: prediction.secondaryImmunityWinnerCastawayId,
+          safePickCastawayId: prediction.secondarySafePickCastawayId,
+        });
+      }
 
-      const firstVoteCountExact =
-        prediction.bootVoteCount != null &&
-        actualBootVoteCount != null &&
-        prediction.bootVoteCount === actualBootVoteCount
-          ? 1
-          : 0;
-      const secondVoteCountExact =
-        prediction.secondaryBootVoteCount != null &&
-        actualSecondaryBootVoteCount != null &&
-        prediction.secondaryBootVoteCount === actualSecondaryBootVoteCount
-          ? 1
-          : 0;
-      const voteCountExactHits = firstVoteCountExact + secondVoteCountExact;
+      const jsonPredictedTribals = parseTribalPredictionArray(prediction.tribals);
+      const predictedTribals =
+        jsonPredictedTribals.length > 0 ? jsonPredictedTribals : fallbackPredictedTribals;
 
-      const firstImmunityExact =
-        prediction.immunityWinnerCastawayId != null &&
-        actualImmunityWinnerCastawayId != null &&
-        prediction.immunityWinnerCastawayId === actualImmunityWinnerCastawayId
-          ? 1
-          : 0;
-      const secondImmunityExact =
-        prediction.secondaryImmunityWinnerCastawayId != null &&
-        actualSecondaryImmunityWinnerCastawayId != null &&
-        prediction.secondaryImmunityWinnerCastawayId === actualSecondaryImmunityWinnerCastawayId
-          ? 1
-          : 0;
-      const immunityExactHits = firstImmunityExact + secondImmunityExact;
+      let bootExactHits = 0;
+      let voteCountExactHits = 0;
+      let immunityExactHits = 0;
+      let safeExactHits = 0;
 
-      const firstSafeExact =
-        prediction.safePickCastawayId != null &&
-        actualBootCastawayId != null &&
-        prediction.safePickCastawayId !== actualBootCastawayId
-          ? 1
-          : 0;
-      const secondSafeExact =
-        prediction.secondarySafePickCastawayId != null &&
-        actualSecondaryBootCastawayId != null &&
-        prediction.secondarySafePickCastawayId !== actualSecondaryBootCastawayId
-          ? 1
-          : 0;
-      const safeExactHits = firstSafeExact + secondSafeExact;
+      for (let tribalIndex = 0; tribalIndex < actualTribals.length; tribalIndex += 1) {
+        const actual = actualTribals[tribalIndex];
+        const predicted = predictedTribals[tribalIndex];
+        if (!predicted) continue;
+
+        if (
+          predicted.bootCastawayId != null &&
+          actual.bootCastawayId != null &&
+          predicted.bootCastawayId === actual.bootCastawayId
+        ) {
+          bootExactHits += 1;
+        }
+
+        if (
+          predicted.bootVoteCount != null &&
+          actual.bootVoteCount != null &&
+          predicted.bootVoteCount === actual.bootVoteCount
+        ) {
+          voteCountExactHits += 1;
+        }
+
+        if (
+          predicted.immunityWinnerCastawayId != null &&
+          actual.immunityWinnerCastawayId != null &&
+          predicted.immunityWinnerCastawayId === actual.immunityWinnerCastawayId
+        ) {
+          immunityExactHits += 1;
+        }
+
+        if (
+          predicted.safePickCastawayId != null &&
+          actual.bootCastawayId != null &&
+          predicted.safePickCastawayId !== actual.bootCastawayId
+        ) {
+          safeExactHits += 1;
+        }
+      }
 
       const predictionPoints = {
         bootCastawayExact: bootExactHits * SURVIVOR_V1_RULES.weeklyPredictions.bootCastawayExact,
@@ -597,44 +774,82 @@ export async function recomputeSurvivorWeekScores(
           safeExactHits * SURVIVOR_V1_RULES.weeklyPredictions.safePickSurvives,
       };
 
-      predictionSubtotal =
+      const coreRawPoints =
         predictionPoints.bootCastawayExact +
         predictionPoints.bootVoteCountExact +
         predictionPoints.immunityWinnerExact +
         predictionPoints.idolPlayedYesNo +
         predictionPoints.safePickSurvives;
-      predictionCapped = survivorPredictionPointsCapped(predictionSubtotal);
+
+      const predictedFinalPlacements = parseFinalPlacementPrediction(prediction.finalPlacements);
+      const finalPlacementPoints = {
+        fourthPlaceExact:
+          episode.week === SURVIVOR_SEASON_WEEKS &&
+          hasResolvedFinal4 &&
+          predictedFinalPlacements.fourthPlaceCastawayId != null &&
+          predictedFinalPlacements.fourthPlaceCastawayId === actualCastawayByPlacement.get(4)
+            ? SURVIVOR_V1_RULES.weeklyPredictions.finalPlacements.fourthPlaceExact
+            : 0,
+        thirdPlaceExact:
+          episode.week === SURVIVOR_SEASON_WEEKS &&
+          hasResolvedFinal4 &&
+          predictedFinalPlacements.thirdPlaceCastawayId != null &&
+          predictedFinalPlacements.thirdPlaceCastawayId === actualCastawayByPlacement.get(3)
+            ? SURVIVOR_V1_RULES.weeklyPredictions.finalPlacements.thirdPlaceExact
+            : 0,
+        secondPlaceExact:
+          episode.week === SURVIVOR_SEASON_WEEKS &&
+          hasResolvedFinal4 &&
+          predictedFinalPlacements.secondPlaceCastawayId != null &&
+          predictedFinalPlacements.secondPlaceCastawayId === actualCastawayByPlacement.get(2)
+            ? SURVIVOR_V1_RULES.weeklyPredictions.finalPlacements.secondPlaceExact
+            : 0,
+        firstPlaceExact:
+          episode.week === SURVIVOR_SEASON_WEEKS &&
+          hasResolvedFinal4 &&
+          predictedFinalPlacements.firstPlaceCastawayId != null &&
+          predictedFinalPlacements.firstPlaceCastawayId === actualCastawayByPlacement.get(1)
+            ? SURVIVOR_V1_RULES.weeklyPredictions.finalPlacements.firstPlaceExact
+            : 0,
+      };
+      const finalPlacementsTotal =
+        finalPlacementPoints.fourthPlaceExact +
+        finalPlacementPoints.thirdPlaceExact +
+        finalPlacementPoints.secondPlaceExact +
+        finalPlacementPoints.firstPlaceExact;
+
+      const coreCappedPoints = survivorPredictionPointsCapped(coreRawPoints);
+      predictionSubtotal = coreRawPoints + finalPlacementsTotal;
+      predictionCapped = coreCappedPoints + finalPlacementsTotal;
 
       predictionBreakdown = {
-        points: predictionPoints,
+        points: {
+          ...predictionPoints,
+          finalPlacements: finalPlacementPoints,
+          finalPlacementsTotal,
+        },
         rawPoints: predictionSubtotal,
         cappedPoints: predictionCapped,
         maxPoints: SURVIVOR_V1_RULES.weeklyPredictions.maxPoints,
+        corePrediction: {
+          rawPoints: coreRawPoints,
+          cappedPoints: coreCappedPoints,
+          maxPoints: SURVIVOR_V1_RULES.weeklyPredictions.maxPoints,
+        },
         actual: {
           bootCastawayIds: actualBootCastawayIds,
-          firstTribal: {
-            bootCastawayId: actualBootCastawayId,
-            bootVoteCount: actualBootVoteCount,
-            immunityWinnerCastawayId: actualImmunityWinnerCastawayId,
-          },
-          secondTribal: {
-            bootCastawayId: actualSecondaryBootCastawayId,
-            bootVoteCount: actualSecondaryBootVoteCount,
-            immunityWinnerCastawayId: actualSecondaryImmunityWinnerCastawayId,
-          },
-          predicted: {
-            firstTribal: {
-              bootCastawayId: prediction.bootCastawayId,
-              bootVoteCount: prediction.bootVoteCount,
-              immunityWinnerCastawayId: prediction.immunityWinnerCastawayId,
-              safePickCastawayId: prediction.safePickCastawayId,
+          tribals: actualTribals,
+          predictedTribals,
+          finalPlacements: {
+            predicted: predictedFinalPlacements,
+            actual: {
+              fourthPlaceCastawayId: actualCastawayByPlacement.get(4) ?? null,
+              thirdPlaceCastawayId: actualCastawayByPlacement.get(3) ?? null,
+              secondPlaceCastawayId: actualCastawayByPlacement.get(2) ?? null,
+              firstPlaceCastawayId: actualCastawayByPlacement.get(1) ?? null,
             },
-            secondTribal: {
-              bootCastawayId: prediction.secondaryBootCastawayId,
-              bootVoteCount: prediction.secondaryBootVoteCount,
-              immunityWinnerCastawayId: prediction.secondaryImmunityWinnerCastawayId,
-              safePickCastawayId: prediction.secondarySafePickCastawayId,
-            },
+            enabledForWeek: episode.week === SURVIVOR_SEASON_WEEKS,
+            resolved: hasResolvedFinal4,
           },
           bootExactHits,
           voteCountExactHits,

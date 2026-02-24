@@ -95,6 +95,7 @@ export default function AppNav({ userName }: { userName: string }) {
           {/* Desktop nav */}
           <nav className="hidden md:flex items-center gap-2 ml-6">
             <NavLink href="/dashboard" label="Dashboard" />
+            <NavLink href="/mock-season" label="Mock Viewer" />
           </nav>
 
           {/* Right side */}
@@ -126,6 +127,7 @@ export default function AppNav({ userName }: { userName: string }) {
                 <div className="absolute right-0 mt-2 w-52 rounded-2xl border border-border bg-card shadow-lg p-2 z-50">
                   {/* Primary */}
                   <MenuItem href="/dashboard" label="Dashboard" onClick={() => setOpen(false)} />
+                  <MenuItem href="/mock-season" label="Mock Viewer" onClick={() => setOpen(false)} />
                   <MenuItem href="/account" label="Account" onClick={() => setOpen(false)} />
 
                   <div className="my-2 border-t border-border" />

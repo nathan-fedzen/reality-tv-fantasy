@@ -35,6 +35,7 @@ type CastawayState = Castaway & {
 type WeekReport = {
   week: number;
   isMerge: boolean;
+  tribalCount: number;
   eliminated: string[];
   immunityWinner: string | null;
   secondaryImmunityWinner: string | null;
@@ -42,6 +43,9 @@ type WeekReport = {
 
 const DOUBLE_TRIBAL_WEEK = 1;
 const MERGE_WEEK = 6;
+const FINALE_WEEK = SURVIVOR_SEASON_WEEKS;
+const TARGET_FINALISTS = 4;
+const MAX_ELIMS_PER_WEEK = 2;
 
 function parseArgs(): ArgMap {
   const raw = process.argv.slice(2);
@@ -141,6 +145,42 @@ function displayName(user: { displayName: string | null; name: string | null; em
   return user.displayName ?? user.name ?? user.email ?? "Unknown";
 }
 
+function buildEliminationPlan(totalCastaways: number) {
+  const plan = Array.from({ length: SURVIVOR_SEASON_WEEKS }, () => 0);
+  let eliminationsRemaining = Math.max(0, totalCastaways - TARGET_FINALISTS);
+
+  const firstWeekElims = Math.min(DOUBLE_TRIBAL_WEEK === 1 ? 2 : 1, eliminationsRemaining);
+  plan[0] = firstWeekElims;
+  eliminationsRemaining -= firstWeekElims;
+
+  for (let week = 2; week < FINALE_WEEK; week += 1) {
+    if (eliminationsRemaining <= 0) break;
+
+    const weeksRemainingBeforeFinale = FINALE_WEEK - week - 1;
+    const minNeededThisWeek = Math.max(
+      0,
+      eliminationsRemaining - weeksRemainingBeforeFinale * MAX_ELIMS_PER_WEEK
+    );
+    const baseline = Math.ceil(eliminationsRemaining / (weeksRemainingBeforeFinale + 1));
+    const count = Math.max(
+      minNeededThisWeek,
+      Math.min(MAX_ELIMS_PER_WEEK, baseline)
+    );
+
+    plan[week - 1] = count;
+    eliminationsRemaining -= count;
+  }
+
+  if (eliminationsRemaining !== 0) {
+    throw new Error(
+      `Could not create elimination plan. Remaining eliminations: ${eliminationsRemaining}.`
+    );
+  }
+
+  plan[FINALE_WEEK - 1] = 0;
+  return plan;
+}
+
 async function resolveLeagueId(inputLeagueId: string | null) {
   if (inputLeagueId) return inputLeagueId;
 
@@ -188,6 +228,7 @@ function buildPlacementMap(
 function countCorrectEliminationPredictions(
   predictions: Array<{
     leagueEntryId: string;
+    tribals: Prisma.JsonValue | null;
     bootCastawayId: string | null;
     secondaryBootCastawayId: string | null;
     episode: { survivorCastawayResults: Array<{ castawayId: string }> };
@@ -195,12 +236,25 @@ function countCorrectEliminationPredictions(
 ) {
   const result = new Map<string, number>();
   for (const prediction of predictions) {
+    const predictedFromTribals: string[] = [];
+    if (Array.isArray(prediction.tribals)) {
+      for (const row of prediction.tribals) {
+        if (!row || typeof row !== "object" || Array.isArray(row)) continue;
+        const castawayId = (row as Record<string, unknown>).bootCastawayId;
+        if (typeof castawayId !== "string") continue;
+        const trimmed = castawayId.trim();
+        if (trimmed) predictedFromTribals.push(trimmed);
+      }
+    }
+
     const predicted = Array.from(
       new Set(
-        [prediction.bootCastawayId, prediction.secondaryBootCastawayId]
-          .filter((value): value is string => !!value)
-          .map((value) => value.trim())
-          .filter(Boolean)
+        predictedFromTribals.length > 0
+          ? predictedFromTribals
+          : [prediction.bootCastawayId, prediction.secondaryBootCastawayId]
+              .filter((value): value is string => !!value)
+              .map((value) => value.trim())
+              .filter(Boolean)
       )
     );
     if (predicted.length === 0) continue;
@@ -380,6 +434,8 @@ async function main() {
     let mergeCastawayIds: string[] = [];
     let bootOrderCreated = false;
     const eliminationLog: Array<{ week: number; castawayId: string }> = [];
+    const eliminationPlan = buildEliminationPlan(league.survivorCastaways.length);
+    const clearWinnerEntryId = entries[0]?.id ?? null;
 
     for (let week = 1; week <= SURVIVOR_SEASON_WEEKS; week += 1) {
       const episode = await tx.episode.upsert({
@@ -392,10 +448,16 @@ async function main() {
       const aliveBefore = Array.from(castawayState.values())
         .filter((castaway) => castaway.alive)
         .map((castaway) => castaway.id);
-      const eliminationCount = week === DOUBLE_TRIBAL_WEEK ? 2 : 1;
-      if (aliveBefore.length < eliminationCount) {
+      const eliminationCount = eliminationPlan[week - 1] ?? 0;
+      const minAliveAfterWeek = week < FINALE_WEEK ? TARGET_FINALISTS : 0;
+      if (aliveBefore.length < eliminationCount || aliveBefore.length - eliminationCount < minAliveAfterWeek) {
         throw new Error(
           `Week ${week} cannot eliminate ${eliminationCount} castaways with ${aliveBefore.length} alive.`
+        );
+      }
+      if (week === FINALE_WEEK && aliveBefore.length !== TARGET_FINALISTS) {
+        throw new Error(
+          `Finale week expected ${TARGET_FINALISTS} survivors, got ${aliveBefore.length}.`
         );
       }
 
@@ -403,10 +465,10 @@ async function main() {
         mergeCastawayIds = aliveBefore.slice();
       }
 
-      const eliminatedIds = pickManyDistinct(rand, aliveBefore, eliminationCount);
+      const eliminatedIds =
+        eliminationCount > 0 ? pickManyDistinct(rand, aliveBefore, eliminationCount) : [];
       const bootCastawayId = eliminatedIds[0] ?? null;
-      const secondaryBootCastawayId =
-        week === DOUBLE_TRIBAL_WEEK ? (eliminatedIds[1] ?? null) : null;
+      const secondaryBootCastawayId = eliminatedIds[1] ?? null;
 
       for (const castawayId of eliminatedIds) {
         eliminationLog.push({ week, castawayId });
@@ -417,7 +479,7 @@ async function main() {
 
       const immunityWinnerCastawayId = winnerPool.length > 0 ? pickOne(rand, winnerPool) : null;
       const secondaryImmunityWinnerCastawayId =
-        week === DOUBLE_TRIBAL_WEEK && winnerPool.length > 0
+        eliminationCount > 1 && winnerPool.length > 0
           ? chooseDifferent(
               rand,
               immunityWinnerCastawayId,
@@ -442,32 +504,62 @@ async function main() {
       const idolPlayerCastawayId =
         winnerPool.length > 0 && chance(rand, 0.22) ? pickOne(rand, winnerPool) : null;
 
+      const actualBootVoteCount = eliminationCount > 0 ? randomInt(rand, 4, 10) : null;
+      const actualSecondaryVoteCount = eliminationCount > 1 ? randomInt(rand, 3, 9) : null;
+      const actualTribals =
+        eliminationCount > 0
+          ? [
+              {
+                bootCastawayId,
+                bootVoteCount: actualBootVoteCount,
+                immunityWinnerCastawayId,
+              },
+              ...(eliminationCount > 1
+                ? [
+                    {
+                      bootCastawayId: secondaryBootCastawayId,
+                      bootVoteCount: actualSecondaryVoteCount,
+                      immunityWinnerCastawayId: secondaryImmunityWinnerCastawayId,
+                    },
+                  ]
+                : []),
+            ]
+          : [
+              {
+                bootCastawayId: null,
+                bootVoteCount: null,
+                immunityWinnerCastawayId,
+              },
+            ];
+
       await tx.survivorEpisodeMeta.upsert({
         where: { episodeId: episode.id },
         create: {
           leagueId: league.id,
           episodeId: episode.id,
+          tribalCount: actualTribals.length,
+          tribals: actualTribals as unknown as Prisma.InputJsonValue,
           isMerge: week === MERGE_WEEK,
-          isNonElimination: false,
+          isNonElimination: eliminationCount === 0,
           wasIdolPlayed: !!idolPlayerCastawayId,
           bootCastawayId,
           secondaryBootCastawayId,
-          bootVoteCount: randomInt(rand, 4, 10),
-          secondaryBootVoteCount:
-            week === DOUBLE_TRIBAL_WEEK ? randomInt(rand, 3, 9) : null,
+          bootVoteCount: actualBootVoteCount,
+          secondaryBootVoteCount: actualSecondaryVoteCount,
           immunityWinnerCastawayId,
           secondaryImmunityWinnerCastawayId,
           lockedAt: new Date(),
         },
         update: {
+          tribalCount: actualTribals.length,
+          tribals: actualTribals as unknown as Prisma.InputJsonValue,
           isMerge: week === MERGE_WEEK,
-          isNonElimination: false,
+          isNonElimination: eliminationCount === 0,
           wasIdolPlayed: !!idolPlayerCastawayId,
           bootCastawayId,
           secondaryBootCastawayId,
-          bootVoteCount: randomInt(rand, 4, 10),
-          secondaryBootVoteCount:
-            week === DOUBLE_TRIBAL_WEEK ? randomInt(rand, 3, 9) : null,
+          bootVoteCount: actualBootVoteCount,
+          secondaryBootVoteCount: actualSecondaryVoteCount,
           immunityWinnerCastawayId,
           secondaryImmunityWinnerCastawayId,
           lockedAt: new Date(),
@@ -551,13 +643,33 @@ async function main() {
         });
       }
 
-      if (week === SURVIVOR_SEASON_WEEKS && mergeCastawayIds.length > 0) {
+      let finalPlacementsActual: {
+        fourthPlaceCastawayId: string | null;
+        thirdPlaceCastawayId: string | null;
+        secondPlaceCastawayId: string | null;
+        firstPlaceCastawayId: string | null;
+      } | null = null;
+
+      if (week === FINALE_WEEK && mergeCastawayIds.length > 0) {
         const placementByCastaway = buildPlacementMap(rand, mergeCastawayIds, eliminationLog);
         for (const row of weekResults) {
           if (placementByCastaway.has(row.castawayId)) {
             row.endgamePlacement = placementByCastaway.get(row.castawayId) ?? null;
           }
         }
+
+        const castawayByPlacement = new Map<number, string>();
+        for (const [castawayId, placement] of placementByCastaway.entries()) {
+          if (placement >= 1 && placement <= 4 && !castawayByPlacement.has(placement)) {
+            castawayByPlacement.set(placement, castawayId);
+          }
+        }
+        finalPlacementsActual = {
+          fourthPlaceCastawayId: castawayByPlacement.get(4) ?? null,
+          thirdPlaceCastawayId: castawayByPlacement.get(3) ?? null,
+          secondPlaceCastawayId: castawayByPlacement.get(2) ?? null,
+          firstPlaceCastawayId: castawayByPlacement.get(1) ?? null,
+        };
       }
 
       await tx.survivorEpisodeCastawayResult.deleteMany({
@@ -567,32 +679,27 @@ async function main() {
         data: weekResults,
       });
 
-      const actualBootVoteCount = randomInt(rand, 4, 10);
-      const actualSecondaryVoteCount =
-        week === DOUBLE_TRIBAL_WEEK ? randomInt(rand, 3, 9) : null;
-
-      await tx.survivorEpisodeMeta.update({
-        where: { episodeId: episode.id },
-        data: {
-          bootVoteCount: actualBootVoteCount,
-          secondaryBootVoteCount: actualSecondaryVoteCount,
-        },
-      });
-
       for (const entry of entries) {
+        const isClearWinner = entry.id === clearWinnerEntryId;
         const predictedBoot =
-          chance(rand, 0.44)
-            ? bootCastawayId
-            : chooseDifferent(
-                rand,
-                bootCastawayId,
-                aliveBefore,
-                new Set<string>()
-              );
+          eliminationCount > 0
+            ? isClearWinner
+              ? bootCastawayId
+              : chance(rand, 0.3)
+              ? bootCastawayId
+              : chooseDifferent(
+                  rand,
+                  bootCastawayId,
+                  aliveBefore,
+                  new Set<string>()
+                )
+            : null;
 
         const predictedSecondaryBoot =
-          week === DOUBLE_TRIBAL_WEEK
-            ? chance(rand, 0.35)
+          eliminationCount > 1
+            ? isClearWinner
+              ? secondaryBootCastawayId
+              : chance(rand, 0.25)
               ? secondaryBootCastawayId
               : chooseDifferent(
                   rand,
@@ -603,7 +710,9 @@ async function main() {
             : null;
 
         const predictedImmunityWinner =
-          chance(rand, 0.4)
+          isClearWinner
+            ? immunityWinnerCastawayId
+            : chance(rand, 0.35)
             ? immunityWinnerCastawayId
             : chooseDifferent(
                 rand,
@@ -613,8 +722,10 @@ async function main() {
               );
 
         const predictedSecondaryImmunityWinner =
-          week === DOUBLE_TRIBAL_WEEK
-            ? chance(rand, 0.33)
+          eliminationCount > 1
+            ? isClearWinner
+              ? secondaryImmunityWinnerCastawayId
+              : chance(rand, 0.28)
               ? secondaryImmunityWinnerCastawayId
               : chooseDifferent(
                   rand,
@@ -624,21 +735,97 @@ async function main() {
                 )
             : null;
 
-        const primarySafePool = aliveBefore.filter(
-          (castawayId) => castawayId !== predictedBoot
-        );
+        const primarySafePool = aliveBefore.filter((castawayId) => castawayId !== predictedBoot);
         const predictedSafePick =
           primarySafePool.length > 0 ? pickOne(rand, primarySafePool) : pickOne(rand, aliveBefore);
 
-        const secondarySafePool = aliveBefore.filter(
-          (castawayId) => castawayId !== predictedSecondaryBoot
-        );
+        const secondarySafePool = aliveBefore.filter((castawayId) => castawayId !== predictedSecondaryBoot);
         const predictedSecondarySafePick =
-          week === DOUBLE_TRIBAL_WEEK
+          eliminationCount > 1
             ? secondarySafePool.length > 0
               ? pickOne(rand, secondarySafePool)
               : pickOne(rand, aliveBefore)
             : null;
+
+        const predictedBootVoteCount =
+          eliminationCount > 0 && actualBootVoteCount != null
+            ? isClearWinner
+              ? actualBootVoteCount
+              : chance(rand, 0.35)
+              ? actualBootVoteCount
+              : jitterVoteCount(rand, actualBootVoteCount)
+            : null;
+        const predictedSecondaryBootVoteCount =
+          eliminationCount > 1 && actualSecondaryVoteCount != null
+            ? isClearWinner
+              ? actualSecondaryVoteCount
+              : chance(rand, 0.28)
+              ? actualSecondaryVoteCount
+              : jitterVoteCount(rand, actualSecondaryVoteCount)
+            : null;
+        const predictedIdolPlayed = isClearWinner
+          ? !!idolPlayerCastawayId
+          : chance(rand, 0.55)
+          ? !!idolPlayerCastawayId
+          : !idolPlayerCastawayId;
+
+        const predictedTribals =
+          eliminationCount > 0
+            ? [
+                {
+                  bootCastawayId: predictedBoot,
+                  bootVoteCount: predictedBootVoteCount,
+                  immunityWinnerCastawayId: predictedImmunityWinner,
+                  safePickCastawayId: predictedSafePick,
+                },
+                ...(eliminationCount > 1
+                  ? [
+                      {
+                        bootCastawayId: predictedSecondaryBoot,
+                        bootVoteCount: predictedSecondaryBootVoteCount,
+                        immunityWinnerCastawayId: predictedSecondaryImmunityWinner,
+                        safePickCastawayId: predictedSecondarySafePick,
+                      },
+                    ]
+                  : []),
+              ]
+            : [
+                {
+                  bootCastawayId: null,
+                  bootVoteCount: null,
+                  immunityWinnerCastawayId: predictedImmunityWinner,
+                  safePickCastawayId: predictedSafePick,
+                },
+              ];
+
+        let finalPlacementsPrediction: Prisma.InputJsonValue | null = null;
+        if (week === FINALE_WEEK && finalPlacementsActual) {
+          const finalistOrder = [
+            finalPlacementsActual.fourthPlaceCastawayId,
+            finalPlacementsActual.thirdPlaceCastawayId,
+            finalPlacementsActual.secondPlaceCastawayId,
+            finalPlacementsActual.firstPlaceCastawayId,
+          ].filter((value): value is string => !!value);
+
+          if (finalistOrder.length === 4) {
+            let ordered = finalistOrder.slice();
+            if (!isClearWinner) {
+              ordered = shuffle(rand, finalistOrder);
+              if (ordered.join("|") === finalistOrder.join("|")) {
+                ordered = finalistOrder.slice(1).concat(finalistOrder[0]);
+              }
+            }
+            finalPlacementsPrediction = {
+              fourthPlaceCastawayId: ordered[0],
+              thirdPlaceCastawayId: ordered[1],
+              secondPlaceCastawayId: ordered[2],
+              firstPlaceCastawayId: ordered[3],
+            };
+          }
+        }
+
+        const firstPredictedTribal = predictedTribals[0] ?? null;
+        const secondPredictedTribal = predictedTribals[1] ?? null;
 
         await tx.survivorWeeklyPrediction.upsert({
           where: {
@@ -651,45 +838,35 @@ async function main() {
             leagueId: league.id,
             episodeId: episode.id,
             leagueEntryId: entry.id,
-            bootCastawayId: predictedBoot,
-            secondaryBootCastawayId: predictedSecondaryBoot,
-            bootVoteCount:
-              chance(rand, 0.45) && actualBootVoteCount != null
-                ? actualBootVoteCount
-                : jitterVoteCount(rand, actualBootVoteCount),
-            secondaryBootVoteCount:
-              week === DOUBLE_TRIBAL_WEEK && actualSecondaryVoteCount != null
-                ? chance(rand, 0.36)
-                  ? actualSecondaryVoteCount
-                  : jitterVoteCount(rand, actualSecondaryVoteCount)
-                : null,
-            immunityWinnerCastawayId: predictedImmunityWinner,
-            secondaryImmunityWinnerCastawayId: predictedSecondaryImmunityWinner,
-            idolPlayed:
-              chance(rand, 0.55) ? !!idolPlayerCastawayId : !idolPlayerCastawayId,
-            safePickCastawayId: predictedSafePick,
-            secondarySafePickCastawayId: predictedSecondarySafePick,
+            tribals: predictedTribals as unknown as Prisma.InputJsonValue,
+            ...(finalPlacementsPrediction ? { finalPlacements: finalPlacementsPrediction } : {}),
+            bootCastawayId: firstPredictedTribal?.bootCastawayId ?? null,
+            secondaryBootCastawayId: secondPredictedTribal?.bootCastawayId ?? null,
+            bootVoteCount: firstPredictedTribal?.bootVoteCount ?? null,
+            secondaryBootVoteCount: secondPredictedTribal?.bootVoteCount ?? null,
+            immunityWinnerCastawayId: firstPredictedTribal?.immunityWinnerCastawayId ?? null,
+            secondaryImmunityWinnerCastawayId:
+              secondPredictedTribal?.immunityWinnerCastawayId ?? null,
+            idolPlayed: predictedIdolPlayed,
+            safePickCastawayId: firstPredictedTribal?.safePickCastawayId ?? null,
+            secondarySafePickCastawayId: secondPredictedTribal?.safePickCastawayId ?? null,
             submittedAt: new Date(Date.now() - week * 86_400_000),
           },
           update: {
-            bootCastawayId: predictedBoot,
-            secondaryBootCastawayId: predictedSecondaryBoot,
-            bootVoteCount:
-              chance(rand, 0.45) && actualBootVoteCount != null
-                ? actualBootVoteCount
-                : jitterVoteCount(rand, actualBootVoteCount),
-            secondaryBootVoteCount:
-              week === DOUBLE_TRIBAL_WEEK && actualSecondaryVoteCount != null
-                ? chance(rand, 0.36)
-                  ? actualSecondaryVoteCount
-                  : jitterVoteCount(rand, actualSecondaryVoteCount)
-                : null,
-            immunityWinnerCastawayId: predictedImmunityWinner,
-            secondaryImmunityWinnerCastawayId: predictedSecondaryImmunityWinner,
-            idolPlayed:
-              chance(rand, 0.55) ? !!idolPlayerCastawayId : !idolPlayerCastawayId,
-            safePickCastawayId: predictedSafePick,
-            secondarySafePickCastawayId: predictedSecondarySafePick,
+            tribals: predictedTribals as unknown as Prisma.InputJsonValue,
+            finalPlacements:
+              finalPlacementsPrediction ??
+              ((Prisma.JsonNull as unknown) as Prisma.InputJsonValue),
+            bootCastawayId: firstPredictedTribal?.bootCastawayId ?? null,
+            secondaryBootCastawayId: secondPredictedTribal?.bootCastawayId ?? null,
+            bootVoteCount: firstPredictedTribal?.bootVoteCount ?? null,
+            secondaryBootVoteCount: secondPredictedTribal?.bootVoteCount ?? null,
+            immunityWinnerCastawayId: firstPredictedTribal?.immunityWinnerCastawayId ?? null,
+            secondaryImmunityWinnerCastawayId:
+              secondPredictedTribal?.immunityWinnerCastawayId ?? null,
+            idolPlayed: predictedIdolPlayed,
+            safePickCastawayId: firstPredictedTribal?.safePickCastawayId ?? null,
+            secondarySafePickCastawayId: secondPredictedTribal?.safePickCastawayId ?? null,
             submittedAt: new Date(Date.now() - week * 86_400_000),
             scoredAt: null,
             points: 0,
@@ -704,6 +881,7 @@ async function main() {
       weekReports.push({
         week,
         isMerge: week === MERGE_WEEK,
+        tribalCount: actualTribals.length,
         eliminated: eliminatedIds.map((id) => namesById.get(id) ?? id),
         immunityWinner: immunityWinnerCastawayId
           ? namesById.get(immunityWinnerCastawayId) ?? immunityWinnerCastawayId
@@ -761,12 +939,10 @@ async function main() {
       _sum: { points: true },
     }),
     prisma.survivorWeeklyPrediction.findMany({
-      where: {
-        leagueId,
-        OR: [{ bootCastawayId: { not: null } }, { secondaryBootCastawayId: { not: null } }],
-      },
+      where: { leagueId },
       select: {
         leagueEntryId: true,
+        tribals: true,
         bootCastawayId: true,
         secondaryBootCastawayId: true,
         episode: {
@@ -822,6 +998,8 @@ async function main() {
       select: {
         leagueEntryId: true,
         episode: { select: { week: true } },
+        tribals: true,
+        finalPlacements: true,
         bootCastawayId: true,
         secondaryBootCastawayId: true,
         bootVoteCount: true,
@@ -918,46 +1096,40 @@ async function main() {
     })),
   }));
 
-  const fullWeeklyPredictions = weeklyPredictions.map((prediction) => ({
-    week: prediction.episode.week,
-    entryId: prediction.leagueEntryId,
-    entryName: entryNameById.get(prediction.leagueEntryId) ?? prediction.leagueEntryId,
-    picks: {
-      bootCastaway:
-        prediction.bootCastawayId
-          ? castawayNameById.get(prediction.bootCastawayId) ?? prediction.bootCastawayId
-          : null,
-      secondaryBootCastaway:
-        prediction.secondaryBootCastawayId
-          ? castawayNameById.get(prediction.secondaryBootCastawayId) ??
-            prediction.secondaryBootCastawayId
-          : null,
-      bootVoteCount: prediction.bootVoteCount,
-      secondaryBootVoteCount: prediction.secondaryBootVoteCount,
-      immunityWinner:
-        prediction.immunityWinnerCastawayId
-          ? castawayNameById.get(prediction.immunityWinnerCastawayId) ??
-            prediction.immunityWinnerCastawayId
-          : null,
-      secondaryImmunityWinner:
-        prediction.secondaryImmunityWinnerCastawayId
-          ? castawayNameById.get(prediction.secondaryImmunityWinnerCastawayId) ??
-            prediction.secondaryImmunityWinnerCastawayId
-          : null,
-      idolPlayed: prediction.idolPlayed,
-      safePick:
-        prediction.safePickCastawayId
-          ? castawayNameById.get(prediction.safePickCastawayId) ??
-            prediction.safePickCastawayId
-          : null,
-      secondarySafePick:
-        prediction.secondarySafePickCastawayId
-          ? castawayNameById.get(prediction.secondarySafePickCastawayId) ??
-            prediction.secondarySafePickCastawayId
-          : null,
-    },
-    pointsAwarded: Number(prediction.points.toString()),
-  }));
+  const fullWeeklyPredictions = weeklyPredictions.map((prediction) => {
+    const finalPlacements =
+      prediction.finalPlacements &&
+      typeof prediction.finalPlacements === "object" &&
+      !Array.isArray(prediction.finalPlacements)
+        ? (prediction.finalPlacements as Record<string, unknown>)
+        : null;
+    const mapName = (value: unknown) =>
+      typeof value === "string" ? castawayNameById.get(value) ?? value : null;
+
+    return {
+      week: prediction.episode.week,
+      entryId: prediction.leagueEntryId,
+      entryName: entryNameById.get(prediction.leagueEntryId) ?? prediction.leagueEntryId,
+      picks: {
+        bootCastaway: mapName(prediction.bootCastawayId),
+        secondaryBootCastaway: mapName(prediction.secondaryBootCastawayId),
+        bootVoteCount: prediction.bootVoteCount,
+        secondaryBootVoteCount: prediction.secondaryBootVoteCount,
+        immunityWinner: mapName(prediction.immunityWinnerCastawayId),
+        secondaryImmunityWinner: mapName(prediction.secondaryImmunityWinnerCastawayId),
+        idolPlayed: prediction.idolPlayed,
+        safePick: mapName(prediction.safePickCastawayId),
+        secondarySafePick: mapName(prediction.secondarySafePickCastawayId),
+        finalPlacements: {
+          fourthPlace: mapName(finalPlacements?.fourthPlaceCastawayId),
+          thirdPlace: mapName(finalPlacements?.thirdPlaceCastawayId),
+          secondPlace: mapName(finalPlacements?.secondPlaceCastawayId),
+          firstPlace: mapName(finalPlacements?.firstPlaceCastawayId),
+        },
+      },
+      pointsAwarded: Number(prediction.points.toString()),
+    };
+  });
 
   const output = {
     generatedAt: new Date().toISOString(),

@@ -488,6 +488,8 @@ model SurvivorEpisodeMeta {
   id                       String   @id @default(cuid())
   leagueId                 String
   episodeId                String   @unique
+  tribalCount              Int      @default(1)
+  tribals                  Json?
   isMerge                  Boolean  @default(false)
   isNonElimination         Boolean  @default(false)
   wasIdolPlayed            Boolean  @default(false)
@@ -550,6 +552,8 @@ model SurvivorWeeklyPrediction {
   leagueId                 String
   episodeId                String
   leagueEntryId            String
+  tribals                  Json?
+  finalPlacements          Json?
   bootCastawayId           String?
   secondaryBootCastawayId  String?
   bootVoteCount            Int?

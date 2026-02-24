@@ -25,6 +25,7 @@ type SurvivorEpisodeWithResults = Prisma.EpisodeGetPayload<{
     lockedAt: true;
     survivorMeta: {
       select: {
+        tribalCount: true;
         isMerge: true;
         isNonElimination: true;
         bootCastawayId: true;
@@ -96,6 +97,8 @@ export default async function WeekPage({
   let survivorEpisode: SurvivorEpisodeWithResults | null = null;
   let mySurvivorPrediction: {
     id: string;
+    tribals: Prisma.JsonValue | null;
+    finalPlacements: Prisma.JsonValue | null;
     bootCastawayId: string | null;
     secondaryBootCastawayId: string | null;
     bootVoteCount: number | null;
@@ -144,6 +147,7 @@ export default async function WeekPage({
           lockedAt: true,
           survivorMeta: {
             select: {
+              tribalCount: true,
               isMerge: true,
               isNonElimination: true,
               bootCastawayId: true,
@@ -193,6 +197,8 @@ export default async function WeekPage({
           },
           select: {
             id: true,
+            tribals: true,
+            finalPlacements: true,
             bootCastawayId: true,
             secondaryBootCastawayId: true,
             bootVoteCount: true,
@@ -313,6 +319,24 @@ export default async function WeekPage({
           select: { id: true, name: true, tribe: true },
         })
       : [];
+  const isFinaleWeek =
+    league.showType === "SURVIVOR" && weekNum === SURVIVOR_SEASON_WEEKS;
+  const finalPlacementOptions =
+    isFinaleWeek && castaways.length > 0
+      ? await (async () => {
+          const eliminatedBeforeWeek = await prisma.survivorEpisodeCastawayResult.findMany({
+            where: {
+              leagueId: league.id,
+              eliminated: true,
+              episode: { week: { lt: weekNum } },
+            },
+            select: { castawayId: true },
+            distinct: ["castawayId"],
+          });
+          const eliminatedSet = new Set(eliminatedBeforeWeek.map((row) => row.castawayId));
+          return castaways.filter((castaway) => !eliminatedSet.has(castaway.id));
+        })()
+      : castaways;
 
   const survivorPredictionLockAt =
     league.showType === "SURVIVOR"
@@ -325,6 +349,10 @@ export default async function WeekPage({
         !!survivorEpisode?.survivorMeta?.lockedAt ||
         (survivorPredictionLockAt ? now >= survivorPredictionLockAt : false)
       : false;
+  const survivorTribalCount =
+    league.showType === "SURVIVOR"
+      ? Math.max(1, survivorEpisode?.survivorMeta?.tribalCount ?? (weekNum === 1 ? 2 : 1))
+      : 1;
 
   return (
     <main className="mx-auto w-full max-w-5xl px-4 pb-10 pt-4 sm:px-6">
@@ -404,10 +432,15 @@ export default async function WeekPage({
               leagueId={league.id}
               week={weekNum}
               castaways={castaways}
+              tribalCount={survivorTribalCount}
+              isFinaleWeek={isFinaleWeek}
+              finalPlacementOptions={finalPlacementOptions}
               existingPrediction={
                 mySurvivorPrediction
                   ? {
                       id: mySurvivorPrediction.id,
+                      tribals: mySurvivorPrediction.tribals,
+                      finalPlacements: mySurvivorPrediction.finalPlacements,
                       bootCastawayId: mySurvivorPrediction.bootCastawayId,
                       secondaryBootCastawayId:
                         mySurvivorPrediction.secondaryBootCastawayId,
