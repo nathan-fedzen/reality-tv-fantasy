@@ -535,41 +535,59 @@ export default async function LeaderboardPage({
 
   const top3 = ranked.slice(0, 3);
   const winnerKey = top3[0]?.entryId ?? "none";
+  const flameContainerBorderColor = "#7a1f16";
 
   return (
     <main className="min-h-[calc(100vh-56px)] bg-background">
       <div className="mx-auto w-full max-w-5xl px-4 sm:px-6 py-8 pb-12 space-y-6">
         {/* Header (mobile-first) */}
-        <div className="relative overflow-hidden rounded-3xl border border-border bg-gradient-to-br from-primary/12 via-background to-secondary/12 p-5 sm:p-6 shadow-sm">
-          <div className="pointer-events-none absolute -top-16 -right-16 -z-10 h-56 w-56 rounded-full bg-primary/20 blur-3xl" />
-          <div className="pointer-events-none absolute -bottom-16 -left-16 -z-10 h-56 w-56 rounded-full bg-secondary/20 blur-3xl" />
+        <ElectricBorder
+          color={flameContainerBorderColor}
+          speed={0.1}
+          chaos={0.01}
+          thickness={2}
+          className=""
+          style={{ borderRadius: 24 }}
+        >
+          <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary/12 via-background to-secondary/12 p-5 sm:p-6 shadow-sm">
+            <div className="pointer-events-none absolute -top-16 -right-16 -z-10 h-56 w-56 rounded-full bg-primary/20 blur-3xl" />
+            <div className="pointer-events-none absolute -bottom-16 -left-16 -z-10 h-56 w-56 rounded-full bg-secondary/20 blur-3xl" />
 
-          <div className="relative z-10 flex items-start justify-between gap-3">
-            <div className="min-w-0 space-y-2">
-              <div className="inline-flex items-center gap-2 rounded-full bg-background/70 px-3 py-1 text-xs font-semibold ring-1 ring-border">
-                🏆 Scoreboard
+            <div className="relative z-10 flex items-start justify-between gap-3">
+              <div className="min-w-0 space-y-2">
+                <div className="inline-flex items-center gap-2 rounded-full bg-background/70 px-3 py-1 text-xs font-semibold ring-1 ring-border">
+                  🏆 Scoreboard
+                </div>
+                <h1 className="text-xl sm:text-3xl font-semibold truncate">
+                  Leaderboard
+                </h1>
+                <p className="text-xs sm:text-sm text-muted-foreground truncate">
+                  {league.name}
+                </p>
               </div>
-              <h1 className="text-xl sm:text-3xl font-semibold truncate">
-                Leaderboard
-              </h1>
-              <p className="text-xs sm:text-sm text-muted-foreground truncate">
-                {league.name}
-              </p>
-            </div>
 
-            <Link
-              href={leagueHref}
-              className="shrink-0 rounded-full border border-border bg-card px-3 py-2 text-sm font-semibold hover:bg-accent transition"
-            >
-              ← Back
-            </Link>
+              <Link
+                href={leagueHref}
+                className="shrink-0 rounded-full border border-border bg-card px-3 py-2 text-sm font-semibold hover:bg-accent transition"
+              >
+                ← Back
+              </Link>
+            </div>
           </div>
-        </div>
+        </ElectricBorder>
 
         {/* Podium */}
         {ranked.length > 0 && (
-          <section className="relative overflow-hidden rounded-3xl border border-border bg-card shadow-sm">
-            <ConfettiBurst triggerKey={winnerKey} />
+          <ElectricBorder
+            color={flameContainerBorderColor}
+            speed={0.1}
+            chaos={0.01}
+            thickness={2}
+            className=""
+            style={{ borderRadius: 24 }}
+          >
+            <section className="relative overflow-hidden rounded-3xl bg-card shadow-sm">
+              <ConfettiBurst triggerKey={winnerKey} />
 
             <div className="relative z-10 p-5">
               <h2 className="text-base font-semibold flex items-center gap-2">
@@ -635,7 +653,8 @@ export default async function LeaderboardPage({
                 })}
               </div>
             </div>
-          </section>
+            </section>
+          </ElectricBorder>
         )}
 
         {/* Standings */}
@@ -644,7 +663,15 @@ export default async function LeaderboardPage({
             No entries yet.
           </div>
         ) : (
-          <div className="rounded-3xl border border-border bg-card shadow-sm overflow-hidden">
+          <ElectricBorder
+            color={flameContainerBorderColor}
+            speed={0.1}
+            chaos={0.01}
+            thickness={2}
+            className=""
+            style={{ borderRadius: 24 }}
+          >
+          <div className="rounded-3xl bg-card shadow-sm overflow-hidden">
             <div className="p-5 flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <h2 className="text-base font-semibold flex items-center gap-2">
@@ -817,10 +844,19 @@ export default async function LeaderboardPage({
               })}
             </div>
           </div>
+          </ElectricBorder>
         )}
 
         {isSurvivor && ranked.length > 0 && (
-          <section className="rounded-3xl border border-border bg-card shadow-sm overflow-hidden">
+          <ElectricBorder
+            color={flameContainerBorderColor}
+            speed={0.1}
+            chaos={0.01}
+            thickness={2}
+            className=""
+            style={{ borderRadius: 24 }}
+          >
+          <section className="rounded-3xl bg-card shadow-sm overflow-hidden">
             <div className="p-5 border-b border-border">
               <h2 className="text-base font-semibold">
                 Survivor Teams and Point Sources
@@ -963,6 +999,7 @@ export default async function LeaderboardPage({
               })}
             </div>
           </section>
+          </ElectricBorder>
         )}
       </div>
     </main>
