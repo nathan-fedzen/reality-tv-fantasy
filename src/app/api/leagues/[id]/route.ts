@@ -40,7 +40,10 @@ export async function DELETE(
       // Delete those dependents first so league deletion is deterministic.
       await tx.survivorBootOrderItem.deleteMany({
         where: {
-          submission: { leagueId: id },
+          OR: [
+            { submission: { leagueId: id } },
+            { castaway: { leagueId: id } },
+          ],
         },
       });
 
@@ -66,10 +69,13 @@ export async function DELETE(
     return NextResponse.json({ ok: true }, { status: 200 });
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2003") {
+      const details =
+        err.meta && typeof err.meta === "object" ? JSON.stringify(err.meta) : null;
       return NextResponse.json(
         {
-          error:
-            "League delete is blocked by related records. Retry once; if it still fails, contact support.",
+          error: details
+            ? `League delete is blocked by related records (${details}).`
+            : "League delete is blocked by related records.",
           prismaCode: err.code,
         },
         { status: 409 }
