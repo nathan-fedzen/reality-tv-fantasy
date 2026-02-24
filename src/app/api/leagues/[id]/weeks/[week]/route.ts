@@ -54,14 +54,27 @@ export async function GET(
     return NextResponse.json({ error: "Invalid week" }, { status: 400 });
   }
 
-  const episode = await prisma.episode.findUnique({
-    where: { leagueId_week: { leagueId: id, week: weekNum } },
-    include: {
-      results: true,
-      survivorMeta: true,
-      survivorCastawayResults: true,
-    },
+  const league = await prisma.league.findUnique({
+    where: { id },
+    select: { showType: true },
   });
+  if (!league) return NextResponse.json({ error: "League not found" }, { status: 404 });
+
+  const episode =
+    league.showType === "SURVIVOR"
+      ? await prisma.episode.findUnique({
+          where: { leagueId_week: { leagueId: id, week: weekNum } },
+          include: {
+            survivorMeta: true,
+            survivorCastawayResults: true,
+          },
+        })
+      : await prisma.episode.findUnique({
+          where: { leagueId_week: { leagueId: id, week: weekNum } },
+          include: {
+            results: true,
+          },
+        });
 
   return NextResponse.json({ episode });
 }

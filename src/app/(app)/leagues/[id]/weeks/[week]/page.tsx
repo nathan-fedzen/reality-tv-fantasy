@@ -41,16 +41,28 @@ export default async function WeekPage({
 
   const isCommissioner = league.createdById === user.id;
 
-  const episode = await prisma.episode.findUnique({
-    where: { leagueId_week: { leagueId: league.id, week: weekNum } },
-    include: {
-      results: true,
-      finalePlacements: true,
-      finaleExtras: true,
-      survivorMeta: true,
-      survivorCastawayResults: true,
-    },
-  });
+  const dragEpisode =
+    league.showType === "DRAG_RACE"
+      ? await prisma.episode.findUnique({
+          where: { leagueId_week: { leagueId: league.id, week: weekNum } },
+          include: {
+            results: true,
+            finalePlacements: true,
+            finaleExtras: true,
+          },
+        })
+      : null;
+
+  const survivorEpisode =
+    league.showType === "SURVIVOR"
+      ? await prisma.episode.findUnique({
+          where: { leagueId_week: { leagueId: league.id, week: weekNum } },
+          include: {
+            survivorMeta: true,
+            survivorCastawayResults: true,
+          },
+        })
+      : null;
 
   const queens =
     league.seasonKey && league.showType === "DRAG_RACE"
@@ -93,10 +105,10 @@ export default async function WeekPage({
             leagueId={league.id}
             week={weekNum}
             queens={queens.map((q) => ({ id: q.id, name: q.name }))}
-            existingResults={episode?.results ?? []}
-            episodeType={episode?.episodeType ?? "REGULAR"}
-            existingFinalePlacements={episode?.finalePlacements ?? []}
-            existingFinaleExtras={episode?.finaleExtras ?? []}
+            existingResults={dragEpisode?.results ?? []}
+            episodeType={dragEpisode?.episodeType ?? "REGULAR"}
+            existingFinalePlacements={dragEpisode?.finalePlacements ?? []}
+            existingFinaleExtras={dragEpisode?.finaleExtras ?? []}
             isCommissioner={isCommissioner}
             hasStarted={hasStarted}
           />
@@ -108,17 +120,18 @@ export default async function WeekPage({
             week={weekNum}
             castaways={castaways}
             existingMeta={
-              episode?.survivorMeta
+              survivorEpisode?.survivorMeta
                 ? {
-                    isMerge: episode.survivorMeta.isMerge,
-                    isNonElimination: episode.survivorMeta.isNonElimination,
-                    bootCastawayId: episode.survivorMeta.bootCastawayId,
-                    bootVoteCount: episode.survivorMeta.bootVoteCount,
-                    immunityWinnerCastawayId: episode.survivorMeta.immunityWinnerCastawayId,
+                    isMerge: survivorEpisode.survivorMeta.isMerge,
+                    isNonElimination: survivorEpisode.survivorMeta.isNonElimination,
+                    bootCastawayId: survivorEpisode.survivorMeta.bootCastawayId,
+                    bootVoteCount: survivorEpisode.survivorMeta.bootVoteCount,
+                    immunityWinnerCastawayId:
+                      survivorEpisode.survivorMeta.immunityWinnerCastawayId,
                   }
                 : null
             }
-            existingResults={(episode?.survivorCastawayResults ?? []).map((row) => ({
+            existingResults={(survivorEpisode?.survivorCastawayResults ?? []).map((row) => ({
               castawayId: row.castawayId,
               survived: row.survived,
               eliminated: row.eliminated,
