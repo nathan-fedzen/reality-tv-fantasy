@@ -176,15 +176,29 @@ export default function LeagueChatBubble(props: {
       <button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
-        className="fixed right-[max(env(safe-area-inset-right),0px)] top-1/2 z-40 -translate-y-1/2 rounded-l-3xl border border-r-0 border-primary/40 bg-primary/20 px-4 py-4 text-sm font-bold text-primary shadow-lg backdrop-blur-sm transition hover:bg-primary/30"
+        className="fixed z-40 flex h-14 w-14 items-center justify-center rounded-full border border-primary/40 bg-primary/20 text-primary shadow-lg backdrop-blur-sm transition hover:bg-primary/30 right-[max(1rem,env(safe-area-inset-right))] bottom-[max(1rem,env(safe-area-inset-bottom))]"
         aria-expanded={isOpen}
         aria-label={toggleLabel}
       >
-        <span className="[writing-mode:vertical-rl] rotate-180 tracking-wider">
-          {toggleLabel}
+        <span className="sr-only">{toggleLabel}</span>
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="h-6 w-6"
+          aria-hidden="true"
+        >
+          <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
+        </svg>
+        <span className="absolute -bottom-6 text-[11px] font-semibold tracking-wide">
+          Chat
         </span>
         {!isOpen && unreadCount > 0 && (
-          <span className="absolute -left-2 -top-2 inline-flex min-h-6 min-w-6 items-center justify-center rounded-full bg-destructive px-1.5 text-[11px] font-bold leading-none text-destructive-foreground shadow-md">
+          <span className="absolute -right-1 -top-1 inline-flex min-h-6 min-w-6 items-center justify-center rounded-full bg-amber-300 px-1.5 text-[11px] font-extrabold leading-none text-slate-950 ring-2 ring-background shadow-md">
             {unreadCount > 99 ? "99+" : unreadCount}
           </span>
         )}
