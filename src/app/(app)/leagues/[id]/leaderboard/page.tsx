@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import ConfettiBurst from "@/components/confetti-burst";
+import AnimatedList from "@/components/ui/animated-list";
 
 function formatDisplayName(
   user: { displayName?: string | null; name: string | null; email: string | null },
@@ -876,7 +877,12 @@ export default async function LeaderboardPage({
                         <div className="text-xs font-semibold uppercase tracking-[0.08em] text-emerald-200">
                           Active survivors
                         </div>
-                        <div className="mt-2 flex flex-wrap gap-2">
+                        <AnimatedList
+                          className="mt-2 flex flex-wrap gap-2"
+                          itemClassName="shrink-0"
+                          stagger={0.04}
+                          yOffset={6}
+                        >
                           {active.length === 0 ? (
                             <span className="text-xs text-muted-foreground">
                               None remaining
@@ -891,14 +897,19 @@ export default async function LeaderboardPage({
                               </span>
                             ))
                           )}
-                        </div>
+                        </AnimatedList>
                       </div>
 
                       <div className="rounded-2xl border border-destructive/30 bg-destructive/10 p-3">
                         <div className="text-xs font-semibold uppercase tracking-[0.08em] text-red-200">
                           Eliminated survivors
                         </div>
-                        <div className="mt-2 flex flex-wrap gap-2">
+                        <AnimatedList
+                          className="mt-2 flex flex-wrap gap-2"
+                          itemClassName="shrink-0"
+                          stagger={0.04}
+                          yOffset={6}
+                        >
                           {eliminated.length === 0 ? (
                             <span className="text-xs text-muted-foreground">None yet</span>
                           ) : (
@@ -911,11 +922,15 @@ export default async function LeaderboardPage({
                               </span>
                             ))
                           )}
-                        </div>
+                        </AnimatedList>
                       </div>
                     </div>
 
-                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    <AnimatedList
+                      className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3"
+                      stagger={0.05}
+                      yOffset={8}
+                    >
                       {breakdownRows.map((item) => (
                         <div
                           key={`${r.entryId}-${item.label}`}
@@ -929,7 +944,7 @@ export default async function LeaderboardPage({
                           </div>
                         </div>
                       ))}
-                    </div>
+                    </AnimatedList>
                   </div>
                 );
               })}
