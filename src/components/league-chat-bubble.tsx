@@ -176,7 +176,7 @@ export default function LeagueChatBubble(props: {
       <button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
-        className="fixed right-0 top-1/2 z-40 -translate-y-1/2 rounded-l-3xl border border-r-0 border-primary/40 bg-primary/20 px-4 py-4 text-sm font-bold text-primary shadow-lg backdrop-blur-sm transition hover:bg-primary/30"
+        className="fixed right-[max(env(safe-area-inset-right),0px)] top-1/2 z-40 -translate-y-1/2 rounded-l-3xl border border-r-0 border-primary/40 bg-primary/20 px-4 py-4 text-sm font-bold text-primary shadow-lg backdrop-blur-sm transition hover:bg-primary/30"
         aria-expanded={isOpen}
         aria-label={toggleLabel}
       >
