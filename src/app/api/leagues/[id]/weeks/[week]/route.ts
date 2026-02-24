@@ -44,10 +44,12 @@ function parseNonNegativeInt(input: unknown) {
 function prismaErrorToResponse(err: unknown) {
   if (err instanceof Prisma.PrismaClientKnownRequestError) {
     if (err.code === "P2022") {
+      const meta =
+        err.meta && typeof err.meta === "object" ? ` (${JSON.stringify(err.meta)})` : "";
       return NextResponse.json(
         {
           error:
-            "Database schema is behind this deployment (missing column). Run `npx prisma migrate deploy` on production and redeploy.",
+            `Database schema is behind this deployment (missing column). Run \`npx prisma migrate deploy\` on production and redeploy.${meta}`,
           prismaCode: err.code,
         },
         { status: 500 }
@@ -234,6 +236,7 @@ export async function PUT(
           where: { leagueId_week: { leagueId: league.id, week: weekNum } },
           create: { leagueId: league.id, week: weekNum },
           update: {},
+          select: { id: true },
         });
 
         await tx.episodeResult.deleteMany({ where: { episodeId: upserted.id } });
@@ -422,6 +425,7 @@ export async function PUT(
           where: { leagueId_week: { leagueId: league.id, week: weekNum } },
           create: { leagueId: league.id, week: weekNum },
           update: {},
+          select: { id: true },
         });
 
         await tx.survivorEpisodeMeta.upsert({
