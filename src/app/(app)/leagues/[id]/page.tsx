@@ -332,66 +332,25 @@ export default async function LeaguePage({
         </div>
 
         <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
-          <section className="rounded-3xl border border-border bg-card p-5 shadow-sm lg:col-span-2">
-            <h2 className="flex items-center gap-2 text-base font-semibold">Cast and Members</h2>
-
-            <ul className="mt-3 space-y-2 text-sm">
-              {league.members.map((m) => (
-                <li
-                  key={m.id}
-                  className="flex items-center justify-between rounded-xl border border-border bg-background/60 px-3 py-2"
-                >
-                  <span className="truncate">{m.user.name || m.user.email}</span>
-                  <span className="text-xs font-semibold text-muted-foreground">{m.role}</span>
-                </li>
-              ))}
-            </ul>
-
+          <aside className="order-1 flex flex-col gap-4 rounded-3xl border border-border bg-card p-5 shadow-sm lg:order-2">
             {league.showType === "SURVIVOR" && (
-              <div className="mt-5">
-                <h3 className="text-sm font-semibold text-muted-foreground">
-                  Survivor 50 Cast ({league.survivorCastaways.length})
-                </h3>
-
-                {league.survivorCastaways.length === 0 ? (
-                  <p className="mt-2 text-sm text-muted-foreground">No castaways seeded yet.</p>
-                ) : (
-                  <ul className="mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
-                    {league.survivorCastaways.map((castaway) => {
-                      const isEliminated = eliminatedCastawayIds.has(castaway.id);
-
-                      return (
-                        <li
-                          key={castaway.id}
-                          className="flex items-center justify-between rounded-xl border border-border bg-background/60 px-3 py-2"
-                        >
-                          <span
-                            className={[
-                              "truncate",
-                              isEliminated ? "text-muted-foreground line-through opacity-70" : "",
-                            ].join(" ")}
-                          >
-                            {castaway.name}
-                          </span>
-                          <span className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
-                            <span>{castaway.tribe ?? "Unassigned"}</span>
-                            {isEliminated && (
-                              <span className="rounded-full border border-destructive/30 bg-destructive/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-destructive">
-                                OUT
-                              </span>
-                            )}
-                          </span>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </div>
+              <section className="order-1 rounded-2xl border border-primary/25 bg-primary/10 p-4 shadow-sm lg:order-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-primary">
+                  New for players
+                </p>
+                <p className="mt-1 text-sm">
+                  Scoring, deadlines, tiebreaks, and strategy reminders in one place.
+                </p>
+                <Link
+                  href={`/leagues/${league.id}/guide`}
+                  className="mt-3 inline-flex rounded-full border border-primary/30 bg-background px-3 py-1.5 text-xs font-semibold text-primary transition hover:bg-accent"
+                >
+                  Open Survivor Player Guide
+                </Link>
+              </section>
             )}
-          </section>
 
-          <aside className="rounded-3xl border border-border bg-card p-5 shadow-sm">
-            <div className="rounded-2xl border border-border bg-background/60 p-3">
+            <div className="order-2 rounded-2xl border border-border bg-background/60 p-3 lg:order-1">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Your standing
               </p>
@@ -479,24 +438,65 @@ export default async function LeaguePage({
               )}
             </div>
           </aside>
-        </div>
 
-        {league.showType === "SURVIVOR" && (
-          <section className="mt-4 rounded-3xl border border-primary/25 bg-primary/10 p-4 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-primary">
-              New for players
-            </p>
-            <p className="mt-1 text-sm">
-              Scoring, deadlines, tiebreaks, and strategy reminders in one place.
-            </p>
-            <Link
-              href={`/leagues/${league.id}/guide`}
-              className="mt-3 inline-flex rounded-full border border-primary/30 bg-background px-3 py-1.5 text-xs font-semibold text-primary transition hover:bg-accent"
-            >
-              Open Survivor Player Guide
-            </Link>
+          <section className="order-2 rounded-3xl border border-border bg-card p-5 shadow-sm lg:order-1 lg:col-span-2">
+            <h2 className="flex items-center gap-2 text-base font-semibold">Cast and Members</h2>
+
+            <ul className="mt-3 space-y-2 text-sm">
+              {league.members.map((m) => (
+                <li
+                  key={m.id}
+                  className="flex items-center justify-between rounded-xl border border-border bg-background/60 px-3 py-2"
+                >
+                  <span className="truncate">{m.user.name || m.user.email}</span>
+                  <span className="text-xs font-semibold text-muted-foreground">{m.role}</span>
+                </li>
+              ))}
+            </ul>
+
+            {league.showType === "SURVIVOR" && (
+              <div className="mt-5">
+                <h3 className="text-sm font-semibold text-muted-foreground">
+                  Survivor 50 Cast ({league.survivorCastaways.length})
+                </h3>
+
+                {league.survivorCastaways.length === 0 ? (
+                  <p className="mt-2 text-sm text-muted-foreground">No castaways seeded yet.</p>
+                ) : (
+                  <ul className="mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
+                    {league.survivorCastaways.map((castaway) => {
+                      const isEliminated = eliminatedCastawayIds.has(castaway.id);
+
+                      return (
+                        <li
+                          key={castaway.id}
+                          className="flex items-center justify-between rounded-xl border border-border bg-background/60 px-3 py-2"
+                        >
+                          <span
+                            className={[
+                              "truncate",
+                              isEliminated ? "text-muted-foreground line-through opacity-70" : "",
+                            ].join(" ")}
+                          >
+                            {castaway.name}
+                          </span>
+                          <span className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
+                            <span>{castaway.tribe ?? "Unassigned"}</span>
+                            {isEliminated && (
+                              <span className="rounded-full border border-destructive/30 bg-destructive/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-destructive">
+                                OUT
+                              </span>
+                            )}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            )}
           </section>
-        )}
+        </div>
 
         {isCreator && (
           <section className="mt-4 rounded-3xl border border-border bg-card p-5 shadow-sm">
