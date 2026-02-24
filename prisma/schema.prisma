@@ -413,10 +413,15 @@ model SurvivorCastaway {
   draftPicks                   SurvivorDraftPick[]
   episodeResults               SurvivorEpisodeCastawayResult[]
   bootPredictions              SurvivorWeeklyPrediction[] @relation("SurvivorPredictionBoot")
+  secondaryBootPredictions     SurvivorWeeklyPrediction[] @relation("SurvivorPredictionSecondaryBoot")
   immunityPredictions          SurvivorWeeklyPrediction[] @relation("SurvivorPredictionImmunityWinner")
+  secondaryImmunityPredictions SurvivorWeeklyPrediction[] @relation("SurvivorPredictionSecondaryImmunityWinner")
   safePredictions              SurvivorWeeklyPrediction[] @relation("SurvivorPredictionSafePick")
+  secondarySafePredictions     SurvivorWeeklyPrediction[] @relation("SurvivorPredictionSecondarySafePick")
   episodeMetasAsBoot           SurvivorEpisodeMeta[]      @relation("SurvivorEpisodeBoot")
+  episodeMetasAsSecondaryBoot  SurvivorEpisodeMeta[]      @relation("SurvivorEpisodeSecondaryBoot")
   episodeMetasAsImmunityWinner SurvivorEpisodeMeta[]      @relation("SurvivorEpisodeImmunityWinner")
+  episodeMetasAsSecondaryImmunityWinner SurvivorEpisodeMeta[] @relation("SurvivorEpisodeSecondaryImmunityWinner")
   bootOrderItems               SurvivorBootOrderItem[]
 
   @@unique([leagueId, name])
@@ -488,8 +493,11 @@ model SurvivorEpisodeMeta {
   shotInTheDarkPlayed      Boolean  @default(false)
   hadTribeSwap             Boolean  @default(false)
   bootCastawayId           String?
+  secondaryBootCastawayId  String?
   bootVoteCount            Int?
+  secondaryBootVoteCount   Int?
   immunityWinnerCastawayId String?
+  secondaryImmunityWinnerCastawayId String?
   lockedAt                 DateTime?
   createdAt                DateTime @default(now())
   updatedAt                DateTime @updatedAt
@@ -497,11 +505,15 @@ model SurvivorEpisodeMeta {
   league                 League            @relation(fields: [leagueId], references: [id], onDelete: Cascade)
   episode                Episode           @relation(fields: [episodeId], references: [id], onDelete: Cascade)
   bootCastaway           SurvivorCastaway? @relation("SurvivorEpisodeBoot", fields: [bootCastawayId], references: [id], onDelete: SetNull)
+  secondaryBootCastaway  SurvivorCastaway? @relation("SurvivorEpisodeSecondaryBoot", fields: [secondaryBootCastawayId], references: [id], onDelete: SetNull)
   immunityWinnerCastaway SurvivorCastaway? @relation("SurvivorEpisodeImmunityWinner", fields: [immunityWinnerCastawayId], references: [id], onDelete: SetNull)
+  secondaryImmunityWinnerCastaway SurvivorCastaway? @relation("SurvivorEpisodeSecondaryImmunityWinner", fields: [secondaryImmunityWinnerCastawayId], references: [id], onDelete: SetNull)
 
   @@index([leagueId])
   @@index([bootCastawayId])
+  @@index([secondaryBootCastawayId])
   @@index([immunityWinnerCastawayId])
+  @@index([secondaryImmunityWinnerCastawayId])
 }
 
 model SurvivorEpisodeCastawayResult {
@@ -538,10 +550,14 @@ model SurvivorWeeklyPrediction {
   episodeId                String
   leagueEntryId            String
   bootCastawayId           String?
+  secondaryBootCastawayId  String?
   bootVoteCount            Int?
+  secondaryBootVoteCount   Int?
   immunityWinnerCastawayId String?
+  secondaryImmunityWinnerCastawayId String?
   idolPlayed               Boolean?
   safePickCastawayId       String?
+  secondarySafePickCastawayId String?
   shotInTheDarkPlayed      Boolean?
   tribeSwapHappens         Boolean?
   nonEliminationEpisode    Boolean?
@@ -554,12 +570,18 @@ model SurvivorWeeklyPrediction {
   episode                Episode           @relation(fields: [episodeId], references: [id], onDelete: Cascade)
   leagueEntry            LeagueEntry       @relation(fields: [leagueEntryId], references: [id], onDelete: Cascade)
   bootCastaway           SurvivorCastaway? @relation("SurvivorPredictionBoot", fields: [bootCastawayId], references: [id], onDelete: SetNull)
+  secondaryBootCastaway  SurvivorCastaway? @relation("SurvivorPredictionSecondaryBoot", fields: [secondaryBootCastawayId], references: [id], onDelete: SetNull)
   immunityWinnerCastaway SurvivorCastaway? @relation("SurvivorPredictionImmunityWinner", fields: [immunityWinnerCastawayId], references: [id], onDelete: SetNull)
+  secondaryImmunityWinnerCastaway SurvivorCastaway? @relation("SurvivorPredictionSecondaryImmunityWinner", fields: [secondaryImmunityWinnerCastawayId], references: [id], onDelete: SetNull)
   safePickCastaway       SurvivorCastaway? @relation("SurvivorPredictionSafePick", fields: [safePickCastawayId], references: [id], onDelete: SetNull)
+  secondarySafePickCastaway SurvivorCastaway? @relation("SurvivorPredictionSecondarySafePick", fields: [secondarySafePickCastawayId], references: [id], onDelete: SetNull)
 
   @@unique([episodeId, leagueEntryId])
   @@index([leagueId])
   @@index([leagueEntryId])
+  @@index([secondaryBootCastawayId])
+  @@index([secondaryImmunityWinnerCastawayId])
+  @@index([secondarySafePickCastawayId])
 }
 
 model SurvivorBootOrderSubmission {

@@ -32,8 +32,11 @@ type SurvivorWeekPayload = {
   isMerge: boolean;
   isNonElimination: boolean;
   bootCastawayId: string | null;
+  secondaryBootCastawayId: string | null;
   bootVoteCount: number | null;
+  secondaryBootVoteCount: number | null;
   immunityWinnerCastawayId: string | null;
+  secondaryImmunityWinnerCastawayId: string | null;
   results: SurvivorCastawayResultPayload[];
 };
 
@@ -116,8 +119,11 @@ export async function GET(
                 isMerge: true,
                 isNonElimination: true,
                 bootCastawayId: true,
+                secondaryBootCastawayId: true,
                 bootVoteCount: true,
+                secondaryBootVoteCount: true,
                 immunityWinnerCastawayId: true,
+                secondaryImmunityWinnerCastawayId: true,
                 lockedAt: true,
               },
             },
@@ -305,7 +311,11 @@ export async function PUT(
 
       const idsToValidate = new Set<string>(castawayIdsInPayload);
       if (body.bootCastawayId) idsToValidate.add(body.bootCastawayId);
+      if (body.secondaryBootCastawayId) idsToValidate.add(body.secondaryBootCastawayId);
       if (body.immunityWinnerCastawayId) idsToValidate.add(body.immunityWinnerCastawayId);
+      if (body.secondaryImmunityWinnerCastawayId) {
+        idsToValidate.add(body.secondaryImmunityWinnerCastawayId);
+      }
 
       const validCastaways = await prisma.survivorCastaway.findMany({
         where: { leagueId: league.id, id: { in: Array.from(idsToValidate) } },
@@ -389,6 +399,7 @@ export async function PUT(
       }
 
       const eliminatedRows = sanitizedResults.filter((r) => r.eliminated);
+      const isDoubleTribalWeek = weekNum === 1;
 
       if (body.isNonElimination) {
         if (eliminatedRows.length > 0) {
@@ -403,19 +414,65 @@ export async function PUT(
             { status: 400 }
           );
         }
-      } else {
-        if (!body.bootCastawayId) {
-          return NextResponse.json({ error: "bootCastawayId is required." }, { status: 400 });
-        }
-        if (eliminatedRows.length !== 1) {
+        if (body.secondaryBootCastawayId) {
           return NextResponse.json(
-            { error: "Exactly one castaway must be marked eliminated." },
+            { error: "Non-elimination weeks cannot have a secondary boot castaway." },
             { status: 400 }
           );
         }
-        if (eliminatedRows[0].castawayId !== body.bootCastawayId) {
+      } else {
+        if (eliminatedRows.length < 1) {
           return NextResponse.json(
-            { error: "bootCastawayId must match the eliminated castaway row." },
+            { error: "At least one castaway must be marked eliminated." },
+            { status: 400 }
+          );
+        }
+        if (!body.bootCastawayId) {
+          return NextResponse.json(
+            { error: "Primary bootCastawayId is required for elimination weeks." },
+            { status: 400 }
+          );
+        }
+        if (!eliminatedRows.some((row) => row.castawayId === body.bootCastawayId)) {
+          return NextResponse.json(
+            { error: "Primary bootCastawayId must match one eliminated castaway row." },
+            { status: 400 }
+          );
+        }
+        if (isDoubleTribalWeek) {
+          if (!body.secondaryBootCastawayId) {
+            return NextResponse.json(
+              { error: "Week 1 requires secondaryBootCastawayId (2nd tribal)." },
+              { status: 400 }
+            );
+          }
+          if (body.secondaryBootCastawayId === body.bootCastawayId) {
+            return NextResponse.json(
+              { error: "secondaryBootCastawayId must differ from bootCastawayId." },
+              { status: 400 }
+            );
+          }
+          if (
+            !eliminatedRows.some((row) => row.castawayId === body.secondaryBootCastawayId)
+          ) {
+            return NextResponse.json(
+              { error: "secondaryBootCastawayId must match one eliminated castaway row." },
+              { status: 400 }
+            );
+          }
+          if (!body.secondaryImmunityWinnerCastawayId) {
+            return NextResponse.json(
+              { error: "Week 1 requires secondaryImmunityWinnerCastawayId (2nd tribal)." },
+              { status: 400 }
+            );
+          }
+        } else if (
+          body.secondaryBootCastawayId ||
+          body.secondaryBootVoteCount != null ||
+          body.secondaryImmunityWinnerCastawayId
+        ) {
+          return NextResponse.json(
+            { error: "Secondary tribal fields are only allowed in week 1." },
             { status: 400 }
           );
         }
@@ -428,6 +485,22 @@ export async function PUT(
       if (body.bootVoteCount != null && bootVoteCount == null) {
         return NextResponse.json(
           { error: "bootVoteCount must be a non-negative integer." },
+          { status: 400 }
+        );
+      }
+      const secondaryBootVoteCount =
+        body.secondaryBootVoteCount == null || body.secondaryBootVoteCount === 0
+          ? null
+          : parseNonNegativeInt(body.secondaryBootVoteCount);
+      if (body.secondaryBootVoteCount != null && secondaryBootVoteCount == null) {
+        return NextResponse.json(
+          { error: "secondaryBootVoteCount must be a non-negative integer." },
+          { status: 400 }
+        );
+      }
+      if (isDoubleTribalWeek && !body.isNonElimination && secondaryBootVoteCount == null) {
+        return NextResponse.json(
+          { error: "Week 1 requires secondaryBootVoteCount (2nd tribal)." },
           { status: 400 }
         );
       }
@@ -448,16 +521,36 @@ export async function PUT(
             isMerge: !!body.isMerge,
             isNonElimination: !!body.isNonElimination,
             bootCastawayId: body.bootCastawayId || null,
+            secondaryBootCastawayId:
+              isDoubleTribalWeek && !body.isNonElimination
+                ? body.secondaryBootCastawayId || null
+                : null,
             bootVoteCount,
+            secondaryBootVoteCount:
+              isDoubleTribalWeek && !body.isNonElimination ? secondaryBootVoteCount : null,
             immunityWinnerCastawayId: body.immunityWinnerCastawayId || null,
+            secondaryImmunityWinnerCastawayId:
+              isDoubleTribalWeek && !body.isNonElimination
+                ? body.secondaryImmunityWinnerCastawayId || null
+                : null,
             lockedAt: new Date(),
           },
           update: {
             isMerge: !!body.isMerge,
             isNonElimination: !!body.isNonElimination,
             bootCastawayId: body.bootCastawayId || null,
+            secondaryBootCastawayId:
+              isDoubleTribalWeek && !body.isNonElimination
+                ? body.secondaryBootCastawayId || null
+                : null,
             bootVoteCount,
+            secondaryBootVoteCount:
+              isDoubleTribalWeek && !body.isNonElimination ? secondaryBootVoteCount : null,
             immunityWinnerCastawayId: body.immunityWinnerCastawayId || null,
+            secondaryImmunityWinnerCastawayId:
+              isDoubleTribalWeek && !body.isNonElimination
+                ? body.secondaryImmunityWinnerCastawayId || null
+                : null,
             lockedAt: new Date(),
           },
         });

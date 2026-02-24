@@ -6,10 +6,14 @@ import { survivorWeekPredictionLockAt } from "@/lib/survivor/survivor-rules";
 
 type SurvivorPredictionPayload = {
   bootCastawayId: string;
+  secondaryBootCastawayId?: string | null;
   bootVoteCount: number;
+  secondaryBootVoteCount?: number | null;
   immunityWinnerCastawayId: string;
+  secondaryImmunityWinnerCastawayId?: string | null;
   idolPlayed: boolean;
   safePickCastawayId: string;
+  secondarySafePickCastawayId?: string | null;
 };
 
 function parseNonNegativeInt(input: unknown) {
@@ -73,10 +77,14 @@ export async function GET(
           select: {
             id: true,
             bootCastawayId: true,
+            secondaryBootCastawayId: true,
             bootVoteCount: true,
+            secondaryBootVoteCount: true,
             immunityWinnerCastawayId: true,
+            secondaryImmunityWinnerCastawayId: true,
             idolPlayed: true,
             safePickCastawayId: true,
+            secondarySafePickCastawayId: true,
             submittedAt: true,
             scoredAt: true,
             points: true,
@@ -121,9 +129,17 @@ export async function PUT(
     }
 
     const bootCastawayId = (payload.bootCastawayId ?? "").trim();
+    const secondaryBootCastawayId = (payload.secondaryBootCastawayId ?? "").trim();
+    const secondaryBootVoteCountRaw = payload.secondaryBootVoteCount;
     const immunityWinnerCastawayId = (payload.immunityWinnerCastawayId ?? "").trim();
+    const secondaryImmunityWinnerCastawayId = (
+      payload.secondaryImmunityWinnerCastawayId ?? ""
+    ).trim();
     const safePickCastawayId = (payload.safePickCastawayId ?? "").trim();
+    const secondarySafePickCastawayId = (payload.secondarySafePickCastawayId ?? "").trim();
     const bootVoteCount = parseNonNegativeInt(payload.bootVoteCount);
+    const secondaryBootVoteCount =
+      secondaryBootVoteCountRaw == null ? null : parseNonNegativeInt(secondaryBootVoteCountRaw);
     const idolPlayed =
       typeof payload.idolPlayed === "boolean" ? payload.idolPlayed : null;
 
@@ -136,6 +152,53 @@ export async function PUT(
     if (idolPlayed == null) return errorResponse("idolPlayed must be true or false.", 400);
     if (safePickCastawayId === bootCastawayId) {
       return errorResponse("safePickCastawayId cannot match bootCastawayId.", 400);
+    }
+    if (secondaryBootCastawayId && secondaryBootCastawayId === bootCastawayId) {
+      return errorResponse("secondaryBootCastawayId cannot match bootCastawayId.", 400);
+    }
+    if (weekNum === 1) {
+      if (!secondaryBootCastawayId) {
+        return errorResponse(
+          "secondaryBootCastawayId is required in week 1 (second tribal).",
+          400
+        );
+      }
+      if (secondaryBootVoteCount == null) {
+        return errorResponse(
+          "secondaryBootVoteCount is required in week 1 (second tribal).",
+          400
+        );
+      }
+      if (!secondaryImmunityWinnerCastawayId) {
+        return errorResponse(
+          "secondaryImmunityWinnerCastawayId is required in week 1 (second tribal).",
+          400
+        );
+      }
+      if (!secondarySafePickCastawayId) {
+        return errorResponse(
+          "secondarySafePickCastawayId is required in week 1 (second tribal).",
+          400
+        );
+      }
+      if (secondarySafePickCastawayId === secondaryBootCastawayId) {
+        return errorResponse(
+          "secondarySafePickCastawayId cannot match secondaryBootCastawayId.",
+          400
+        );
+      }
+    } else {
+      if (
+        secondaryBootCastawayId ||
+        secondaryBootVoteCount != null ||
+        secondaryImmunityWinnerCastawayId ||
+        secondarySafePickCastawayId
+      ) {
+        return errorResponse(
+          "Second tribal prediction fields are only allowed in week 1.",
+          400
+        );
+      }
     }
 
     const league = await prisma.league.findUnique({
@@ -188,8 +251,11 @@ export async function PUT(
 
       const castawayIds = new Set<string>([
         bootCastawayId,
+        ...(secondaryBootCastawayId ? [secondaryBootCastawayId] : []),
         immunityWinnerCastawayId,
+        ...(secondaryImmunityWinnerCastawayId ? [secondaryImmunityWinnerCastawayId] : []),
         safePickCastawayId,
+        ...(secondarySafePickCastawayId ? [secondarySafePickCastawayId] : []),
       ]);
 
       const validCastaways = await tx.survivorCastaway.findMany({
@@ -206,19 +272,30 @@ export async function PUT(
           episodeId: episode.id,
           leagueEntryId: entry.id,
           bootCastawayId,
+          secondaryBootCastawayId: secondaryBootCastawayId || null,
           bootVoteCount,
+          secondaryBootVoteCount:
+            weekNum === 1 && secondaryBootVoteCount != null ? secondaryBootVoteCount : null,
           immunityWinnerCastawayId,
+          secondaryImmunityWinnerCastawayId:
+            weekNum === 1 ? secondaryImmunityWinnerCastawayId || null : null,
           idolPlayed,
           safePickCastawayId,
+          secondarySafePickCastawayId:
+            weekNum === 1 ? secondarySafePickCastawayId || null : null,
           submittedAt: now,
         },
         select: {
           id: true,
           bootCastawayId: true,
+          secondaryBootCastawayId: true,
           bootVoteCount: true,
+          secondaryBootVoteCount: true,
           immunityWinnerCastawayId: true,
+          secondaryImmunityWinnerCastawayId: true,
           idolPlayed: true,
           safePickCastawayId: true,
+          secondarySafePickCastawayId: true,
           submittedAt: true,
         },
       });

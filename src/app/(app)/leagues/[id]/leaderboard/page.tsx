@@ -24,6 +24,46 @@ function initials(name: string) {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
+type SurvivorTiebreakPrediction = {
+  leagueEntryId: string;
+  bootCastawayId: string | null;
+  secondaryBootCastawayId: string | null;
+  episode: {
+    survivorCastawayResults: Array<{ castawayId: string }>;
+  };
+};
+
+function countCorrectEliminationPredictions(
+  predictions: SurvivorTiebreakPrediction[]
+) {
+  const result = new Map<string, number>();
+
+  for (const prediction of predictions) {
+    const predictedBoots = Array.from(
+      new Set(
+        [prediction.bootCastawayId, prediction.secondaryBootCastawayId]
+          .filter((value): value is string => !!value)
+          .map((value) => value.trim())
+          .filter(Boolean)
+      )
+    );
+    if (predictedBoots.length === 0) continue;
+
+    const actualBoots = new Set(
+      prediction.episode.survivorCastawayResults.map((row) => row.castawayId)
+    );
+    const hits = predictedBoots.filter((castawayId) => actualBoots.has(castawayId)).length;
+    if (hits === 0) continue;
+
+    result.set(
+      prediction.leagueEntryId,
+      (result.get(prediction.leagueEntryId) ?? 0) + hits
+    );
+  }
+
+  return result;
+}
+
 type Row = {
   entryId: string;
   createdAt: Date;
@@ -110,32 +150,24 @@ export default async function LeaderboardPage({
     const survivorPredictions = await prisma.survivorWeeklyPrediction.findMany({
       where: {
         leagueId,
-        bootCastawayId: { not: null },
+        OR: [{ bootCastawayId: { not: null } }, { secondaryBootCastawayId: { not: null } }],
       },
       select: {
         leagueEntryId: true,
         bootCastawayId: true,
+        secondaryBootCastawayId: true,
         episode: {
           select: {
-            survivorMeta: {
-              select: {
-                bootCastawayId: true,
-              },
+            survivorCastawayResults: {
+              where: { eliminated: true },
+              select: { castawayId: true },
             },
           },
         },
       },
     });
-
-    for (const prediction of survivorPredictions) {
-      const predicted = prediction.bootCastawayId;
-      const actual = prediction.episode.survivorMeta?.bootCastawayId;
-      if (!predicted || !actual || predicted !== actual) continue;
-      correctBootPredictionsByEntryId.set(
-        prediction.leagueEntryId,
-        (correctBootPredictionsByEntryId.get(prediction.leagueEntryId) ?? 0) + 1
-      );
-    }
+    const counts = countCorrectEliminationPredictions(survivorPredictions);
+    counts.forEach((value, key) => correctBootPredictionsByEntryId.set(key, value));
   }
 
   const rowsBase = entries.map((e) => {
@@ -217,7 +249,10 @@ export default async function LeaderboardPage({
         const survivorPredictions = await prisma.survivorWeeklyPrediction.findMany({
           where: {
             leagueId,
-            bootCastawayId: { not: null },
+            OR: [
+              { bootCastawayId: { not: null } },
+              { secondaryBootCastawayId: { not: null } },
+            ],
             episode: {
               leagueId,
               week: { lte: week },
@@ -226,22 +261,18 @@ export default async function LeaderboardPage({
           select: {
             leagueEntryId: true,
             bootCastawayId: true,
+            secondaryBootCastawayId: true,
             episode: {
               select: {
-                survivorMeta: { select: { bootCastawayId: true } },
+                survivorCastawayResults: {
+                  where: { eliminated: true },
+                  select: { castawayId: true },
+                },
               },
             },
           },
         });
-
-        const map = new Map<string, number>();
-        for (const prediction of survivorPredictions) {
-          const predicted = prediction.bootCastawayId;
-          const actual = prediction.episode.survivorMeta?.bootCastawayId;
-          if (!predicted || !actual || predicted !== actual) continue;
-          map.set(prediction.leagueEntryId, (map.get(prediction.leagueEntryId) ?? 0) + 1);
-        }
-        return map;
+        return countCorrectEliminationPredictions(survivorPredictions);
       };
 
       const cumulativeTotalsThrough = async (week: number) => {

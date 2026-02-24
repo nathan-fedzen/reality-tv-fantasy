@@ -134,6 +134,14 @@ export default async function LeaguePage({
                 Player Guide
               </Link>
             )}
+            {league.showType === "SURVIVOR" && isCreator && (
+              <Link
+                href={`/leagues/${league.id}/commissioner-updates`}
+                className="rounded-full border border-primary/40 bg-primary/10 px-4 py-1.5 text-sm font-semibold text-primary transition hover:bg-primary/15"
+              >
+                Commissioner Updates
+              </Link>
+            )}
           </div>
         </div>
 

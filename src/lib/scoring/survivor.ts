@@ -253,8 +253,11 @@ export async function recomputeSurvivorWeekScores(
             isMerge: true,
             isNonElimination: true,
             bootCastawayId: true,
+            secondaryBootCastawayId: true,
             bootVoteCount: true,
+            secondaryBootVoteCount: true,
             immunityWinnerCastawayId: true,
+            secondaryImmunityWinnerCastawayId: true,
           },
         },
       },
@@ -294,10 +297,14 @@ export async function recomputeSurvivorWeekScores(
         id: true,
         leagueEntryId: true,
         bootCastawayId: true,
+        secondaryBootCastawayId: true,
         bootVoteCount: true,
+        secondaryBootVoteCount: true,
         immunityWinnerCastawayId: true,
+        secondaryImmunityWinnerCastawayId: true,
         idolPlayed: true,
         safePickCastawayId: true,
+        secondarySafePickCastawayId: true,
       },
     }),
     computeBootOrderAwardsForEpisode(tx, leagueId, episodeId),
@@ -319,10 +326,21 @@ export async function recomputeSurvivorWeekScores(
   if (!episode) return;
 
   const isMergeEpisode = !!episode.survivorMeta?.isMerge;
-  const actualBootCastawayId = episode.survivorMeta?.bootCastawayId ?? null;
+  const actualBootCastawayIds = castawayResults
+    .filter((row) => row.eliminated)
+    .map((row) => row.castawayId);
+  const actualBootCastawayId =
+    episode.survivorMeta?.bootCastawayId ?? actualBootCastawayIds[0] ?? null;
+  const actualSecondaryBootCastawayId =
+    episode.survivorMeta?.secondaryBootCastawayId ??
+    actualBootCastawayIds.find((castawayId) => castawayId !== actualBootCastawayId) ??
+    null;
   const actualBootVoteCount = episode.survivorMeta?.bootVoteCount ?? null;
+  const actualSecondaryBootVoteCount = episode.survivorMeta?.secondaryBootVoteCount ?? null;
   const actualImmunityWinnerCastawayId =
     episode.survivorMeta?.immunityWinnerCastawayId ?? null;
+  const actualSecondaryImmunityWinnerCastawayId =
+    episode.survivorMeta?.secondaryImmunityWinnerCastawayId ?? null;
   const actualIdolPlayed = castawayResults.some((row) => row.idolsPlayedSuccessfully > 0);
 
   await tx.leagueEntryScore.deleteMany({ where: { episodeId } });
@@ -509,32 +527,74 @@ export async function recomputeSurvivorWeekScores(
     let predictionBreakdown: Prisma.InputJsonObject | null = null;
 
     if (prediction) {
+      const firstBootExact =
+        prediction.bootCastawayId != null &&
+        actualBootCastawayId != null &&
+        prediction.bootCastawayId === actualBootCastawayId
+          ? 1
+          : 0;
+      const secondBootExact =
+        prediction.secondaryBootCastawayId != null &&
+        actualSecondaryBootCastawayId != null &&
+        prediction.secondaryBootCastawayId === actualSecondaryBootCastawayId
+          ? 1
+          : 0;
+      const bootExactHits = firstBootExact + secondBootExact;
+
+      const firstVoteCountExact =
+        prediction.bootVoteCount != null &&
+        actualBootVoteCount != null &&
+        prediction.bootVoteCount === actualBootVoteCount
+          ? 1
+          : 0;
+      const secondVoteCountExact =
+        prediction.secondaryBootVoteCount != null &&
+        actualSecondaryBootVoteCount != null &&
+        prediction.secondaryBootVoteCount === actualSecondaryBootVoteCount
+          ? 1
+          : 0;
+      const voteCountExactHits = firstVoteCountExact + secondVoteCountExact;
+
+      const firstImmunityExact =
+        prediction.immunityWinnerCastawayId != null &&
+        actualImmunityWinnerCastawayId != null &&
+        prediction.immunityWinnerCastawayId === actualImmunityWinnerCastawayId
+          ? 1
+          : 0;
+      const secondImmunityExact =
+        prediction.secondaryImmunityWinnerCastawayId != null &&
+        actualSecondaryImmunityWinnerCastawayId != null &&
+        prediction.secondaryImmunityWinnerCastawayId === actualSecondaryImmunityWinnerCastawayId
+          ? 1
+          : 0;
+      const immunityExactHits = firstImmunityExact + secondImmunityExact;
+
+      const firstSafeExact =
+        prediction.safePickCastawayId != null &&
+        actualBootCastawayId != null &&
+        prediction.safePickCastawayId !== actualBootCastawayId
+          ? 1
+          : 0;
+      const secondSafeExact =
+        prediction.secondarySafePickCastawayId != null &&
+        actualSecondaryBootCastawayId != null &&
+        prediction.secondarySafePickCastawayId !== actualSecondaryBootCastawayId
+          ? 1
+          : 0;
+      const safeExactHits = firstSafeExact + secondSafeExact;
+
       const predictionPoints = {
-        bootCastawayExact:
-          prediction.bootCastawayId === actualBootCastawayId
-            ? SURVIVOR_V1_RULES.weeklyPredictions.bootCastawayExact
-            : 0,
+        bootCastawayExact: bootExactHits * SURVIVOR_V1_RULES.weeklyPredictions.bootCastawayExact,
         bootVoteCountExact:
-          prediction.bootVoteCount != null &&
-          actualBootVoteCount != null &&
-          prediction.bootVoteCount === actualBootVoteCount
-            ? SURVIVOR_V1_RULES.weeklyPredictions.bootVoteCountExact
-            : 0,
+          voteCountExactHits * SURVIVOR_V1_RULES.weeklyPredictions.bootVoteCountExact,
         immunityWinnerExact:
-          prediction.immunityWinnerCastawayId != null &&
-          actualImmunityWinnerCastawayId != null &&
-          prediction.immunityWinnerCastawayId === actualImmunityWinnerCastawayId
-            ? SURVIVOR_V1_RULES.weeklyPredictions.immunityWinnerExact
-            : 0,
+          immunityExactHits * SURVIVOR_V1_RULES.weeklyPredictions.immunityWinnerExact,
         idolPlayedYesNo:
           prediction.idolPlayed != null && prediction.idolPlayed === actualIdolPlayed
             ? SURVIVOR_V1_RULES.weeklyPredictions.idolPlayedYesNo
             : 0,
         safePickSurvives:
-          prediction.safePickCastawayId != null &&
-          (resultByCastawayId.get(prediction.safePickCastawayId)?.eliminated ?? true) === false
-            ? SURVIVOR_V1_RULES.weeklyPredictions.safePickSurvives
-            : 0,
+          safeExactHits * SURVIVOR_V1_RULES.weeklyPredictions.safePickSurvives,
       };
 
       predictionSubtotal =
@@ -551,9 +611,35 @@ export async function recomputeSurvivorWeekScores(
         cappedPoints: predictionCapped,
         maxPoints: SURVIVOR_V1_RULES.weeklyPredictions.maxPoints,
         actual: {
-          bootCastawayId: actualBootCastawayId,
-          bootVoteCount: actualBootVoteCount,
-          immunityWinnerCastawayId: actualImmunityWinnerCastawayId,
+          bootCastawayIds: actualBootCastawayIds,
+          firstTribal: {
+            bootCastawayId: actualBootCastawayId,
+            bootVoteCount: actualBootVoteCount,
+            immunityWinnerCastawayId: actualImmunityWinnerCastawayId,
+          },
+          secondTribal: {
+            bootCastawayId: actualSecondaryBootCastawayId,
+            bootVoteCount: actualSecondaryBootVoteCount,
+            immunityWinnerCastawayId: actualSecondaryImmunityWinnerCastawayId,
+          },
+          predicted: {
+            firstTribal: {
+              bootCastawayId: prediction.bootCastawayId,
+              bootVoteCount: prediction.bootVoteCount,
+              immunityWinnerCastawayId: prediction.immunityWinnerCastawayId,
+              safePickCastawayId: prediction.safePickCastawayId,
+            },
+            secondTribal: {
+              bootCastawayId: prediction.secondaryBootCastawayId,
+              bootVoteCount: prediction.secondaryBootVoteCount,
+              immunityWinnerCastawayId: prediction.secondaryImmunityWinnerCastawayId,
+              safePickCastawayId: prediction.secondarySafePickCastawayId,
+            },
+          },
+          bootExactHits,
+          voteCountExactHits,
+          immunityExactHits,
+          safeExactHits,
           idolPlayed: actualIdolPlayed,
           isNonEliminationEpisode: !!episode.survivorMeta?.isNonElimination,
         },

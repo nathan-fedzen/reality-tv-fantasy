@@ -4,7 +4,6 @@ import { Prisma } from "@prisma/client";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import DragRaceWeekForm from "@/components/commissioner/drag-race-week-form";
-import SurvivorWeekForm from "@/components/commissioner/survivor-week-form";
 import SurvivorWeeklyPredictionForm from "@/components/survivor/weekly-prediction-form";
 import SurvivorBootOrderLockInForm from "@/components/survivor/boot-order-lockin-form";
 import SurvivorAuctionPanel from "@/components/survivor/auction-panel";
@@ -95,10 +94,14 @@ export default async function WeekPage({
   let mySurvivorPrediction: {
     id: string;
     bootCastawayId: string | null;
+    secondaryBootCastawayId: string | null;
     bootVoteCount: number | null;
+    secondaryBootVoteCount: number | null;
     immunityWinnerCastawayId: string | null;
+    secondaryImmunityWinnerCastawayId: string | null;
     idolPlayed: boolean | null;
     safePickCastawayId: string | null;
+    secondarySafePickCastawayId: string | null;
     submittedAt: Date;
     scoredAt: Date | null;
     points: Prisma.Decimal;
@@ -188,10 +191,14 @@ export default async function WeekPage({
           select: {
             id: true,
             bootCastawayId: true,
+            secondaryBootCastawayId: true,
             bootVoteCount: true,
+            secondaryBootVoteCount: true,
             immunityWinnerCastawayId: true,
+            secondaryImmunityWinnerCastawayId: true,
             idolPlayed: true,
             safePickCastawayId: true,
+            secondarySafePickCastawayId: true,
             submittedAt: true,
             scoredAt: true,
             points: true,
@@ -317,7 +324,7 @@ export default async function WeekPage({
       : false;
 
   return (
-    <main className="mx-auto w-full max-w-md p-4 pb-10">
+    <main className="mx-auto w-full max-w-5xl px-4 pb-10 pt-4 sm:px-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Week {weekNum}</h1>
@@ -342,7 +349,7 @@ export default async function WeekPage({
       )}
 
       {!schemaMismatch && league.showType === "DRAG_RACE" ? (
-        <div className="mt-6">
+        <div className="mt-6 mx-auto max-w-2xl">
           <DragRaceWeekForm
             leagueId={league.id}
             week={weekNum}
@@ -356,92 +363,89 @@ export default async function WeekPage({
           />
         </div>
       ) : !schemaMismatch && league.showType === "SURVIVOR" ? (
-        <div className="mt-6 space-y-4">
-          <SurvivorWeekForm
-            leagueId={league.id}
-            week={weekNum}
-            castaways={castaways}
-            existingMeta={
-              survivorEpisode?.survivorMeta
-                ? {
-                    isMerge: survivorEpisode.survivorMeta.isMerge,
-                    isNonElimination: survivorEpisode.survivorMeta.isNonElimination,
-                    bootCastawayId: survivorEpisode.survivorMeta.bootCastawayId,
-                    bootVoteCount: survivorEpisode.survivorMeta.bootVoteCount,
-                    immunityWinnerCastawayId:
-                      survivorEpisode.survivorMeta.immunityWinnerCastawayId,
-                  }
-                : null
-            }
-            existingResults={(survivorEpisode?.survivorCastawayResults ?? []).map((row) => ({
-              castawayId: row.castawayId,
-              survived: row.survived,
-              eliminated: row.eliminated,
-              individualImmunityWins: row.individualImmunityWins,
-              tribeImmunityWins: row.tribeImmunityWins,
-              individualRewardWins: row.individualRewardWins,
-              advantagesFound: row.advantagesFound,
-              idolsPlayedSuccessfully: row.idolsPlayedSuccessfully,
-              votesReceived: row.votesReceived,
-              confessionalCount: row.confessionalCount,
-              confessionalLeader: row.confessionalLeader,
-              endgamePlacement: row.endgamePlacement,
-            }))}
-            isCommissioner={isCommissioner}
-            hasStarted={hasStarted}
-          />
-          <SurvivorWeeklyPredictionForm
-            leagueId={league.id}
-            week={weekNum}
-            castaways={castaways}
-            existingPrediction={
-              mySurvivorPrediction
-                ? {
-                    id: mySurvivorPrediction.id,
-                    bootCastawayId: mySurvivorPrediction.bootCastawayId,
-                    bootVoteCount: mySurvivorPrediction.bootVoteCount,
-                    immunityWinnerCastawayId:
-                      mySurvivorPrediction.immunityWinnerCastawayId,
-                    idolPlayed: mySurvivorPrediction.idolPlayed,
-                    safePickCastawayId: mySurvivorPrediction.safePickCastawayId,
-                    submittedAt: mySurvivorPrediction.submittedAt.toISOString(),
-                    scoredAt: mySurvivorPrediction.scoredAt
-                      ? mySurvivorPrediction.scoredAt.toISOString()
-                      : null,
-                    points: Number(mySurvivorPrediction.points.toString()),
-                  }
-                : null
-            }
-            lockAtIso={survivorPredictionLockAt?.toISOString() ?? null}
-            isLocked={survivorPredictionLocked}
-          />
-          <SurvivorBootOrderLockInForm
-            leagueId={league.id}
-            isMergeOpen={bootOrderMergeOpen}
-            mergeWeek={bootOrderMergeWeek}
-            castaways={bootOrderCastaways}
-            existingSubmission={
-              myBootOrderSubmission
-                ? {
-                    id: myBootOrderSubmission.id,
-                    submittedAt: myBootOrderSubmission.submittedAt.toISOString(),
-                    scoredAt: myBootOrderSubmission.scoredAt
-                      ? myBootOrderSubmission.scoredAt.toISOString()
-                      : null,
-                    points: Number(myBootOrderSubmission.points.toString()),
-                    orderedCastawayIds: myBootOrderSubmission.items
-                      .sort((a, b) => a.predictedPosition - b.predictedPosition)
-                      .map((item) => item.castawayId),
-                  }
-                : null
-            }
-            isLocked={bootOrderLocked}
-            lockReason={bootOrderLockReason}
-          />
-          <SurvivorAuctionPanel leagueId={league.id} week={weekNum} />
+        <div className="mt-4 space-y-4">
+          {isCommissioner && (
+            <div className="flex flex-wrap gap-2">
+              <Link
+                href={`/leagues/${league.id}/commissioner-updates`}
+                className="rounded-full border border-primary/35 bg-primary/12 px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/18"
+              >
+                Commissioner weeks
+              </Link>
+              <Link
+                href={`/leagues/${league.id}/commissioner-updates/${weekNum}`}
+                className="rounded-full border border-border bg-card px-3 py-1.5 text-xs font-semibold hover:bg-accent"
+              >
+                Edit Week {weekNum} results
+              </Link>
+            </div>
+          )}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <div className="space-y-4">
+            <SurvivorWeeklyPredictionForm
+              leagueId={league.id}
+              week={weekNum}
+              castaways={castaways}
+              existingPrediction={
+                mySurvivorPrediction
+                  ? {
+                      id: mySurvivorPrediction.id,
+                      bootCastawayId: mySurvivorPrediction.bootCastawayId,
+                      secondaryBootCastawayId:
+                        mySurvivorPrediction.secondaryBootCastawayId,
+                      bootVoteCount: mySurvivorPrediction.bootVoteCount,
+                      secondaryBootVoteCount:
+                        mySurvivorPrediction.secondaryBootVoteCount,
+                      immunityWinnerCastawayId:
+                        mySurvivorPrediction.immunityWinnerCastawayId,
+                      secondaryImmunityWinnerCastawayId:
+                        mySurvivorPrediction.secondaryImmunityWinnerCastawayId,
+                      idolPlayed: mySurvivorPrediction.idolPlayed,
+                      safePickCastawayId: mySurvivorPrediction.safePickCastawayId,
+                      secondarySafePickCastawayId:
+                        mySurvivorPrediction.secondarySafePickCastawayId,
+                      submittedAt: mySurvivorPrediction.submittedAt.toISOString(),
+                      scoredAt: mySurvivorPrediction.scoredAt
+                        ? mySurvivorPrediction.scoredAt.toISOString()
+                        : null,
+                      points: Number(mySurvivorPrediction.points.toString()),
+                    }
+                  : null
+              }
+              lockAtIso={survivorPredictionLockAt?.toISOString() ?? null}
+              isLocked={survivorPredictionLocked}
+            />
+            <SurvivorBootOrderLockInForm
+              leagueId={league.id}
+              isMergeOpen={bootOrderMergeOpen}
+              mergeWeek={bootOrderMergeWeek}
+              castaways={bootOrderCastaways}
+              existingSubmission={
+                myBootOrderSubmission
+                  ? {
+                      id: myBootOrderSubmission.id,
+                      submittedAt: myBootOrderSubmission.submittedAt.toISOString(),
+                      scoredAt: myBootOrderSubmission.scoredAt
+                        ? myBootOrderSubmission.scoredAt.toISOString()
+                        : null,
+                      points: Number(myBootOrderSubmission.points.toString()),
+                      orderedCastawayIds: myBootOrderSubmission.items
+                        .sort((a, b) => a.predictedPosition - b.predictedPosition)
+                        .map((item) => item.castawayId),
+                    }
+                  : null
+              }
+              isLocked={bootOrderLocked}
+              lockReason={bootOrderLockReason}
+            />
+            </div>
+            <div>
+            <SurvivorAuctionPanel leagueId={league.id} week={weekNum} />
+            </div>
+          </div>
         </div>
       ) : (
-        <div className="mt-6 rounded-md border p-3 text-sm">
+        <div className="mt-6 mx-auto max-w-2xl rounded-md border p-3 text-sm">
           Weekly results UI for this ruleset is not implemented yet.
         </div>
       )}

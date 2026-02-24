@@ -18,10 +18,17 @@ export default async function WeeksIndexPage({
     select: {
       id: true,
       name: true,
+      showType: true,
       createdById: true,
       startsAt: true,
       startedAt: true,
-      episodes: { select: { week: true }, orderBy: { week: "asc" } },
+      episodes: {
+        select: {
+          week: true,
+          survivorCastawayResults: { select: { id: true } },
+        },
+        orderBy: { week: "asc" },
+      },
     },
   });
 
@@ -30,9 +37,20 @@ export default async function WeeksIndexPage({
   const now = new Date();
   const hasStarted =
     league.startedAt !== null || (league.startsAt ? now >= league.startsAt : false);
+  const isCommissioner = league.createdById === user.id;
 
-  const savedWeeks = new Set(league.episodes.map((e) => e.week));
-  const weeksToShow = Array.from({ length: 20 }, (_, i) => i + 1); // MVP: show 1..20
+  const enteredWeeks = new Set(
+    league.episodes
+      .filter((episode) =>
+        league.showType === "SURVIVOR"
+          ? episode.survivorCastawayResults.length > 0
+          : true
+      )
+      .map((episode) => episode.week)
+  );
+
+  const totalWeeks = league.showType === "SURVIVOR" ? 13 : 20;
+  const weeksToShow = Array.from({ length: totalWeeks }, (_, i) => i + 1);
 
   return (
     <main className="mx-auto w-full max-w-md p-4 pb-10">
@@ -44,12 +62,23 @@ export default async function WeeksIndexPage({
       </div>
 
       <p className="mt-2 text-sm text-muted-foreground">
-        {league.name} • {hasStarted ? "League started" : "Locked until league starts"}
+        {league.name} - {hasStarted ? "League started" : "Locked until league starts"}
       </p>
+
+      {league.showType === "SURVIVOR" && isCommissioner && (
+        <div className="mt-3">
+          <Link
+            href={`/leagues/${league.id}/commissioner-updates`}
+            className="inline-flex rounded-full border border-primary/35 bg-primary/12 px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/18"
+          >
+            Commissioner updates
+          </Link>
+        </div>
+      )}
 
       <ul className="mt-6 space-y-2">
         {weeksToShow.map((week) => {
-          const isSaved = savedWeeks.has(week);
+          const isEntered = enteredWeeks.has(week);
           return (
             <li key={week}>
               <Link
@@ -58,7 +87,7 @@ export default async function WeeksIndexPage({
               >
                 <span className="text-sm font-medium">Week {week}</span>
                 <span className="text-xs font-semibold">
-                  {isSaved ? "Entered" : "Not entered"}
+                  {isEntered ? "Entered" : "Not entered"}
                 </span>
               </Link>
             </li>

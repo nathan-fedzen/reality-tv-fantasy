@@ -248,7 +248,7 @@ export default async function SurvivorPlayerGuidePage({
 
   const predictionRows = [
     {
-      label: "Exact boot castaway",
+      label: "Exact boot castaway (per correct boot pick)",
       points: SURVIVOR_V1_RULES.weeklyPredictions.bootCastawayExact,
     },
     {
@@ -367,8 +367,9 @@ export default async function SurvivorPlayerGuidePage({
                   2. Weekly prediction
                 </p>
                 <p className="mt-1 text-sm">
-                  Submit once per week: boot, vote count, immunity, idol yes/no, and a
-                  safe pick. Safe pick cannot match your boot pick.
+                  Submit once per week: boot pick, vote count, immunity, idol yes/no,
+                  and a safe pick. Week 1 has two ordered sets (1st tribal and 2nd tribal):
+                  boot pick, boot vote count, immunity winner, and safe pick for each.
                 </p>
               </div>
               <div className="rounded-2xl border border-border bg-background/60 p-3">
