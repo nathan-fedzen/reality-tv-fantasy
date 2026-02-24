@@ -17,6 +17,12 @@ export const SURVIVOR_V1_RULES = {
     safePickSurvives: 8,
     maxPoints: 35,
   },
+  bootOrder: {
+    exactPosition: 8,
+    offByOne: 4,
+    final3Presence: 5,
+    winnerBonus: 10,
+  },
   endgamePlacementPoints: {
     1: 35,
     2: 25,

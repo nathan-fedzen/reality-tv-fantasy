@@ -10,12 +10,231 @@ type Tx = Omit<
   "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends"
 >;
 
+type BootOrderAward = {
+  points: number;
+  breakdown: Prisma.InputJsonObject;
+};
+
+async function computeBootOrderAwardsForEpisode(
+  tx: Tx,
+  leagueId: string,
+  episodeId: string
+) {
+  const latestPlacementEpisode = await tx.episode.findFirst({
+    where: {
+      leagueId,
+      survivorCastawayResults: {
+        some: { endgamePlacement: { not: null } },
+      },
+    },
+    orderBy: { week: "desc" },
+    select: { id: true },
+  });
+
+  if (!latestPlacementEpisode || latestPlacementEpisode.id !== episodeId) {
+    return new Map<string, BootOrderAward>();
+  }
+
+  const mergeEpisode = await tx.episode.findFirst({
+    where: {
+      leagueId,
+      survivorMeta: {
+        is: { isMerge: true },
+      },
+    },
+    orderBy: { week: "asc" },
+    select: {
+      id: true,
+      week: true,
+      survivorCastawayResults: {
+        select: {
+          castawayId: true,
+          castaway: { select: { name: true } },
+        },
+      },
+    },
+  });
+
+  if (!mergeEpisode) return new Map<string, BootOrderAward>();
+
+  const mergeCastawayMap = new Map<
+    string,
+    {
+      castawayId: string;
+      castawayName: string;
+    }
+  >();
+  for (const row of mergeEpisode.survivorCastawayResults) {
+    mergeCastawayMap.set(row.castawayId, {
+      castawayId: row.castawayId,
+      castawayName: row.castaway.name,
+    });
+  }
+  const mergeCastaways = Array.from(mergeCastawayMap.values());
+  if (mergeCastaways.length === 0) return new Map<string, BootOrderAward>();
+
+  const placements = await tx.survivorEpisodeCastawayResult.findMany({
+    where: {
+      leagueId,
+      castawayId: { in: mergeCastaways.map((row) => row.castawayId) },
+      endgamePlacement: { not: null },
+    },
+    select: {
+      castawayId: true,
+      endgamePlacement: true,
+    },
+  });
+
+  const placementByCastaway = new Map<string, number>();
+  for (const row of placements) {
+    if (row.endgamePlacement == null) continue;
+    const existing = placementByCastaway.get(row.castawayId);
+    if (existing == null || row.endgamePlacement < existing) {
+      placementByCastaway.set(row.castawayId, row.endgamePlacement);
+    }
+  }
+
+  if (placementByCastaway.size < mergeCastaways.length) {
+    return new Map<string, BootOrderAward>();
+  }
+
+  const actualOrder = mergeCastaways
+    .map((castaway) => ({
+      castawayId: castaway.castawayId,
+      castawayName: castaway.castawayName,
+      placement: placementByCastaway.get(castaway.castawayId)!,
+    }))
+    .sort((a, b) => {
+      if (a.placement !== b.placement) return b.placement - a.placement;
+      return a.castawayName.localeCompare(b.castawayName);
+    });
+
+  const actualPositionByCastaway = new Map<string, number>();
+  for (let i = 0; i < actualOrder.length; i++) {
+    actualPositionByCastaway.set(actualOrder[i].castawayId, i + 1);
+  }
+
+  const final3StartPosition = Math.max(1, actualOrder.length - 2);
+  const winnerCastawayId = actualOrder[actualOrder.length - 1]?.castawayId ?? null;
+
+  const submissions = await tx.survivorBootOrderSubmission.findMany({
+    where: { leagueId },
+    select: {
+      id: true,
+      leagueEntryId: true,
+      items: {
+        select: {
+          castawayId: true,
+          predictedPosition: true,
+          castaway: { select: { name: true } },
+        },
+      },
+    },
+  });
+
+  const awardsByEntryId = new Map<string, BootOrderAward>();
+
+  await Promise.all(
+    submissions.map(async (submission) => {
+      const predictedPositionByCastaway = new Map<string, number>();
+      for (const item of submission.items) {
+        predictedPositionByCastaway.set(item.castawayId, item.predictedPosition);
+      }
+
+      const predictedWinner = submission.items.reduce<{
+        castawayId: string | null;
+        predictedPosition: number;
+      }>(
+        (acc, item) => {
+          if (item.predictedPosition > acc.predictedPosition) {
+            return {
+              castawayId: item.castawayId,
+              predictedPosition: item.predictedPosition,
+            };
+          }
+          return acc;
+        },
+        { castawayId: null, predictedPosition: -1 }
+      );
+
+      let total = 0;
+      const perCastaway = actualOrder.map((actual) => {
+        const predictedPosition = predictedPositionByCastaway.get(actual.castawayId) ?? null;
+        const actualPosition = actualPositionByCastaway.get(actual.castawayId)!;
+
+        const exactPosition =
+          predictedPosition != null && predictedPosition === actualPosition
+            ? SURVIVOR_V1_RULES.bootOrder.exactPosition
+            : 0;
+        const offByOne =
+          exactPosition === 0 &&
+          predictedPosition != null &&
+          Math.abs(predictedPosition - actualPosition) === 1
+            ? SURVIVOR_V1_RULES.bootOrder.offByOne
+            : 0;
+        const final3Presence =
+          predictedPosition != null &&
+          predictedPosition >= final3StartPosition &&
+          actualPosition >= final3StartPosition
+            ? SURVIVOR_V1_RULES.bootOrder.final3Presence
+            : 0;
+
+        const subtotal = exactPosition + offByOne + final3Presence;
+        total += subtotal;
+
+        return {
+          castawayId: actual.castawayId,
+          castawayName: actual.castawayName,
+          predictedPosition,
+          actualPosition,
+          points: {
+            exactPosition,
+            offByOne,
+            final3Presence,
+          },
+          subtotal,
+        };
+      });
+
+      const winnerBonus =
+        winnerCastawayId != null && predictedWinner.castawayId === winnerCastawayId
+          ? SURVIVOR_V1_RULES.bootOrder.winnerBonus
+          : 0;
+      total += winnerBonus;
+
+      const breakdown: Prisma.InputJsonObject = {
+        ruleset: "SURVIVOR_V1_BOOT_ORDER",
+        mergeWeek: mergeEpisode.week,
+        final3StartPosition,
+        winnerCastawayId,
+        winnerBonus,
+        perCastaway,
+        total,
+      };
+
+      awardsByEntryId.set(submission.leagueEntryId, { points: total, breakdown });
+
+      await tx.survivorBootOrderSubmission.update({
+        where: { id: submission.id },
+        data: {
+          points: new Prisma.Decimal(total),
+          scoredAt: new Date(),
+          breakdown,
+        },
+      });
+    })
+  );
+
+  return awardsByEntryId;
+}
+
 export async function recomputeSurvivorWeekScores(
   tx: Tx,
   leagueId: string,
   episodeId: string
 ) {
-  const [episode, entries, draftPicks, castawayResults, predictions] = await Promise.all([
+  const [episode, entries, draftPicks, castawayResults, predictions, bootOrderAwards] =
+    await Promise.all([
     tx.episode.findUnique({
       where: { id: episodeId },
       select: {
@@ -71,6 +290,7 @@ export async function recomputeSurvivorWeekScores(
         safePickCastawayId: true,
       },
     }),
+    computeBootOrderAwardsForEpisode(tx, leagueId, episodeId),
   ]);
 
   if (!episode) return;
@@ -260,7 +480,10 @@ export async function recomputeSurvivorWeekScores(
       });
     }
 
-    const total = performanceTotal + predictionCapped;
+    const bootOrderAward = bootOrderAwards.get(entry.id);
+    const bootOrderPoints = bootOrderAward?.points ?? 0;
+
+    const total = performanceTotal + predictionCapped + bootOrderPoints;
 
     rows.push({
       leagueEntryId: entry.id,
@@ -278,6 +501,13 @@ export async function recomputeSurvivorWeekScores(
               ...predictionBreakdown,
             }
           : { submitted: false, rawPoints: 0, cappedPoints: 0 },
+        bootOrder: bootOrderAward
+          ? {
+              awarded: true,
+              points: bootOrderPoints,
+              ...bootOrderAward.breakdown,
+            }
+          : { awarded: false, points: 0 },
         total,
       },
     });

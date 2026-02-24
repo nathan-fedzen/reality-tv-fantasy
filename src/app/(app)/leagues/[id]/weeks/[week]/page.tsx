@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import DragRaceWeekForm from "@/components/commissioner/drag-race-week-form";
 import SurvivorWeekForm from "@/components/commissioner/survivor-week-form";
 import SurvivorWeeklyPredictionForm from "@/components/survivor/weekly-prediction-form";
+import SurvivorBootOrderLockInForm from "@/components/survivor/boot-order-lockin-form";
 import { survivorWeekPredictionLockAt } from "@/lib/survivor/survivor-rules";
 
 type DragEpisodeWithResults = Prisma.EpisodeGetPayload<{
@@ -99,6 +100,18 @@ export default async function WeekPage({
     scoredAt: Date | null;
     points: Prisma.Decimal;
   } | null = null;
+  let bootOrderMergeWeek: number | null = null;
+  let bootOrderMergeOpen = false;
+  let bootOrderLocked = true;
+  let bootOrderLockReason: string | null = "Boot-order lock-in unlocks at merge.";
+  let bootOrderCastaways: Array<{ id: string; name: string; tribe: string | null }> = [];
+  let myBootOrderSubmission: {
+    id: string;
+    submittedAt: Date;
+    scoredAt: Date | null;
+    points: Prisma.Decimal;
+    items: Array<{ castawayId: string; predictedPosition: number }>;
+  } | null = null;
 
   try {
     if (league.showType === "DRAG_RACE") {
@@ -179,6 +192,86 @@ export default async function WeekPage({
             points: true,
           },
         });
+
+        myBootOrderSubmission = await prisma.survivorBootOrderSubmission.findUnique({
+          where: { leagueEntryId: myEntry.id },
+          select: {
+            id: true,
+            submittedAt: true,
+            scoredAt: true,
+            points: true,
+            items: {
+              select: {
+                castawayId: true,
+                predictedPosition: true,
+              },
+              orderBy: { predictedPosition: "asc" },
+            },
+          },
+        });
+      }
+
+      const mergeEpisode = await prisma.episode.findFirst({
+        where: {
+          leagueId: league.id,
+          survivorMeta: { is: { isMerge: true } },
+        },
+        orderBy: { week: "asc" },
+        select: {
+          id: true,
+          week: true,
+          survivorCastawayResults: {
+            select: {
+              castawayId: true,
+              castaway: {
+                select: {
+                  id: true,
+                  name: true,
+                  tribe: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (mergeEpisode) {
+        bootOrderMergeOpen = true;
+        bootOrderMergeWeek = mergeEpisode.week;
+        bootOrderCastaways = Array.from(
+          new Map(
+            mergeEpisode.survivorCastawayResults.map((row) => [
+              row.castawayId,
+              {
+                id: row.castaway.id,
+                name: row.castaway.name,
+                tribe: row.castaway.tribe,
+              },
+            ])
+          ).values()
+        );
+
+        const final3Count =
+          bootOrderCastaways.length > 0
+            ? await prisma.survivorEpisodeCastawayResult.count({
+                where: {
+                  leagueId: league.id,
+                  castawayId: { in: bootOrderCastaways.map((row) => row.id) },
+                  endgamePlacement: { lte: 3 },
+                },
+              })
+            : 0;
+
+        if (myBootOrderSubmission) {
+          bootOrderLocked = true;
+          bootOrderLockReason = "You already submitted your boot-order lock-in.";
+        } else if (final3Count >= 3) {
+          bootOrderLocked = true;
+          bootOrderLockReason = "Boot-order lock-in has closed.";
+        } else {
+          bootOrderLocked = false;
+          bootOrderLockReason = null;
+        }
       }
     }
   } catch (err) {
@@ -314,6 +407,29 @@ export default async function WeekPage({
             }
             lockAtIso={survivorPredictionLockAt?.toISOString() ?? null}
             isLocked={survivorPredictionLocked}
+          />
+          <SurvivorBootOrderLockInForm
+            leagueId={league.id}
+            isMergeOpen={bootOrderMergeOpen}
+            mergeWeek={bootOrderMergeWeek}
+            castaways={bootOrderCastaways}
+            existingSubmission={
+              myBootOrderSubmission
+                ? {
+                    id: myBootOrderSubmission.id,
+                    submittedAt: myBootOrderSubmission.submittedAt.toISOString(),
+                    scoredAt: myBootOrderSubmission.scoredAt
+                      ? myBootOrderSubmission.scoredAt.toISOString()
+                      : null,
+                    points: Number(myBootOrderSubmission.points.toString()),
+                    orderedCastawayIds: myBootOrderSubmission.items
+                      .sort((a, b) => a.predictedPosition - b.predictedPosition)
+                      .map((item) => item.castawayId),
+                  }
+                : null
+            }
+            isLocked={bootOrderLocked}
+            lockReason={bootOrderLockReason}
           />
         </div>
       ) : (
