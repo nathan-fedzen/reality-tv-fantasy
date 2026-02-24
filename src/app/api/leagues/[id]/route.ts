@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
@@ -33,7 +34,48 @@ export async function DELETE(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  await prisma.league.delete({ where: { id } });
+  try {
+    await prisma.$transaction(async (tx) => {
+      // Some child tables reference castaway/player rows with RESTRICT constraints.
+      // Delete those dependents first so league deletion is deterministic.
+      await tx.survivorBootOrderItem.deleteMany({
+        where: {
+          submission: { leagueId: id },
+        },
+      });
 
-  return NextResponse.json({ ok: true }, { status: 200 });
+      await tx.survivorDraftPick.deleteMany({
+        where: {
+          draft: { leagueId: id },
+        },
+      });
+
+      await tx.survivorEpisodeCastawayResult.deleteMany({
+        where: { leagueId: id },
+      });
+
+      await tx.traitorsEntryPick.deleteMany({
+        where: {
+          entry: { leagueId: id },
+        },
+      });
+
+      await tx.league.delete({ where: { id } });
+    });
+
+    return NextResponse.json({ ok: true }, { status: 200 });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2003") {
+      return NextResponse.json(
+        {
+          error:
+            "League delete is blocked by related records. Retry once; if it still fails, contact support.",
+          prismaCode: err.code,
+        },
+        { status: 409 }
+      );
+    }
+
+    return NextResponse.json({ error: "Failed to delete league." }, { status: 500 });
+  }
 }

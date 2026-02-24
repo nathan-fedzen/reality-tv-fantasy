@@ -1,0 +1,163 @@
+import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
+import { getCurrentUser } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+
+function badRequest(error: string) {
+  return NextResponse.json({ error }, { status: 400 });
+}
+
+function forbidden(error = "Forbidden") {
+  return NextResponse.json({ error }, { status: 403 });
+}
+
+function schemaNotReady() {
+  return NextResponse.json(
+    {
+      error:
+        "League chat is not ready in this environment yet. Run `npx prisma migrate deploy` and redeploy.",
+    },
+    { status: 503 }
+  );
+}
+
+export async function GET(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { id: leagueId } = await params;
+    if (!leagueId) return badRequest("Invalid league id.");
+
+    const membership = await prisma.leagueMember.findUnique({
+      where: {
+        leagueId_userId: {
+          leagueId,
+          userId: user.id,
+        },
+      },
+      select: { id: true },
+    });
+    if (!membership) return forbidden();
+
+    const url = new URL(req.url);
+    const limitRaw = Number(url.searchParams.get("limit") ?? 60);
+    const limit = Number.isInteger(limitRaw)
+      ? Math.max(1, Math.min(200, limitRaw))
+      : 60;
+
+    const messages = await prisma.leagueMessage.findMany({
+      where: {
+        leagueId,
+        channel: "GENERAL",
+        episodeId: null,
+      },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+      select: {
+        id: true,
+        body: true,
+        createdAt: true,
+        authorMemberId: true,
+        author: {
+          select: {
+            userId: true,
+            user: {
+              select: {
+                displayName: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return NextResponse.json({
+      messages: messages.reverse().map((message) => ({
+        id: message.id,
+        body: message.body,
+        createdAt: message.createdAt,
+        authorMemberId: message.authorMemberId,
+        authorUserId: message.author.userId,
+        authorName:
+          message.author.user.displayName ??
+          message.author.user.name ??
+          message.author.user.email ??
+          "Player",
+      })),
+    });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2021") {
+      return schemaNotReady();
+    }
+    return NextResponse.json({ error: "Failed to load chat." }, { status: 500 });
+  }
+}
+
+export async function POST(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { id: leagueId } = await params;
+    if (!leagueId) return badRequest("Invalid league id.");
+
+    const membership = await prisma.leagueMember.findUnique({
+      where: {
+        leagueId_userId: {
+          leagueId,
+          userId: user.id,
+        },
+      },
+      select: { id: true },
+    });
+    if (!membership) return forbidden();
+
+    const json = (await req.json().catch(() => null)) as
+      | { body?: string }
+      | null;
+    const body = (json?.body ?? "").trim();
+
+    if (!body) return badRequest("Message cannot be empty.");
+    if (body.length > 1000) {
+      return badRequest("Message is too long (max 1000 characters).");
+    }
+
+    const created = await prisma.leagueMessage.create({
+      data: {
+        leagueId,
+        authorMemberId: membership.id,
+        channel: "GENERAL",
+        body,
+      },
+      select: {
+        id: true,
+        body: true,
+        createdAt: true,
+        authorMemberId: true,
+      },
+    });
+
+    return NextResponse.json({
+      ok: true,
+      message: created,
+    });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2021") {
+      return schemaNotReady();
+    }
+    return NextResponse.json({ error: "Failed to send message." }, { status: 500 });
+  }
+}
