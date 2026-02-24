@@ -233,7 +233,15 @@ export async function recomputeSurvivorWeekScores(
   leagueId: string,
   episodeId: string
 ) {
-  const [episode, entries, draftPicks, castawayResults, predictions, bootOrderAwards] =
+  const [
+    episode,
+    entries,
+    draftPicks,
+    castawayResults,
+    predictions,
+    bootOrderAwards,
+    usedAdvantages,
+  ] =
     await Promise.all([
     tx.episode.findUnique({
       where: { id: episodeId },
@@ -291,6 +299,19 @@ export async function recomputeSurvivorWeekScores(
       },
     }),
     computeBootOrderAwardsForEpisode(tx, leagueId, episodeId),
+    tx.survivorOwnedAdvantage.findMany({
+      where: {
+        leagueId,
+        status: "USED",
+        lastAppliedEpisodeId: episodeId,
+      },
+      select: {
+        id: true,
+        leagueEntryId: true,
+        advantageType: true,
+        title: true,
+      },
+    }),
   ]);
 
   if (!episode) return;
@@ -323,11 +344,41 @@ export async function recomputeSurvivorWeekScores(
   );
 
   const rows: Prisma.LeagueEntryScoreCreateManyInput[] = [];
+  const advantageEffectTransactions: Prisma.SurvivorPointTransactionCreateManyInput[] = [];
   const predictionUpdates: Array<{
     id: string;
     points: Prisma.Decimal;
     breakdown: Prisma.InputJsonValue;
   }> = [];
+
+  const usedAdvantagesByEntryId = new Map<
+    string,
+    Array<{
+      id: string;
+      advantageType: "DOUBLE_EPISODE" | "IDOL_INSURANCE" | "PREDICTION_SHIELD";
+      title: string;
+    }>
+  >();
+  for (const advantage of usedAdvantages) {
+    const list = usedAdvantagesByEntryId.get(advantage.leagueEntryId) ?? [];
+    list.push({
+      id: advantage.id,
+      advantageType: advantage.advantageType as
+        | "DOUBLE_EPISODE"
+        | "IDOL_INSURANCE"
+        | "PREDICTION_SHIELD",
+      title: advantage.title,
+    });
+    usedAdvantagesByEntryId.set(advantage.leagueEntryId, list);
+  }
+
+  await tx.survivorPointTransaction.deleteMany({
+    where: {
+      leagueId,
+      episodeId,
+      source: "ADVANTAGE_EFFECT",
+    },
+  });
 
   for (const entry of entries) {
     const roster = rosterByEntry.get(entry.id) ?? [];
@@ -483,7 +534,77 @@ export async function recomputeSurvivorWeekScores(
     const bootOrderAward = bootOrderAwards.get(entry.id);
     const bootOrderPoints = bootOrderAward?.points ?? 0;
 
-    const total = performanceTotal + predictionCapped + bootOrderPoints;
+    const subtotalBeforeAdvantages = performanceTotal + predictionCapped + bootOrderPoints;
+
+    let advantagePoints = 0;
+    const advantageEffects: Array<{
+      ownedAdvantageId: string;
+      type: "DOUBLE_EPISODE" | "IDOL_INSURANCE" | "PREDICTION_SHIELD";
+      title: string;
+      points: number;
+      reason: string;
+    }> = [];
+
+    const appliedAdvantages = usedAdvantagesByEntryId.get(entry.id) ?? [];
+    const hasEliminatedRosterCastaway = roster.some(
+      (castaway) => resultByCastawayId.get(castaway.castawayId)?.eliminated === true
+    );
+
+    for (const advantage of appliedAdvantages) {
+      let points = 0;
+      let reason = "";
+
+      if (advantage.advantageType === "DOUBLE_EPISODE") {
+        points = Math.max(
+          0,
+          subtotalBeforeAdvantages * (SURVIVOR_V1_RULES.advantages.doubleEpisodeMultiplier - 1)
+        );
+        reason = "Doubled this week's subtotal.";
+      } else if (advantage.advantageType === "IDOL_INSURANCE") {
+        points = hasEliminatedRosterCastaway
+          ? SURVIVOR_V1_RULES.advantages.idolInsuranceFlat
+          : 0;
+        reason = hasEliminatedRosterCastaway
+          ? "Roster loss protection applied."
+          : "No roster elimination this week.";
+      } else if (advantage.advantageType === "PREDICTION_SHIELD") {
+        points = Math.max(
+          0,
+          SURVIVOR_V1_RULES.advantages.predictionShieldFloor - predictionCapped
+        );
+        reason = "Prediction score floor protection applied.";
+      }
+
+      if (points !== 0) {
+        advantageEffectTransactions.push({
+          leagueId,
+          leagueEntryId: entry.id,
+          episodeId,
+          ownedAdvantageId: advantage.id,
+          source: "ADVANTAGE_EFFECT",
+          amount: new Prisma.Decimal(points),
+          reason,
+          metadata: {
+            type: advantage.advantageType,
+            title: advantage.title,
+            subtotalBeforeAdvantages,
+            predictionCapped,
+            hasEliminatedRosterCastaway,
+          },
+        });
+      }
+
+      advantagePoints += points;
+      advantageEffects.push({
+        ownedAdvantageId: advantage.id,
+        type: advantage.advantageType,
+        title: advantage.title,
+        points,
+        reason,
+      });
+    }
+
+    const total = subtotalBeforeAdvantages + advantagePoints;
 
     rows.push({
       leagueEntryId: entry.id,
@@ -508,6 +629,11 @@ export async function recomputeSurvivorWeekScores(
               ...bootOrderAward.breakdown,
             }
           : { awarded: false, points: 0 },
+        advantages: {
+          appliedCount: advantageEffects.length,
+          points: advantagePoints,
+          effects: advantageEffects,
+        },
         total,
       },
     });
@@ -530,5 +656,11 @@ export async function recomputeSurvivorWeekScores(
 
   if (rows.length) {
     await tx.leagueEntryScore.createMany({ data: rows });
+  }
+
+  if (advantageEffectTransactions.length) {
+    await tx.survivorPointTransaction.createMany({
+      data: advantageEffectTransactions,
+    });
   }
 }

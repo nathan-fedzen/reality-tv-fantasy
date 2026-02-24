@@ -651,6 +651,7 @@ model SurvivorAuctionBid {
   @@index([lotId])
   @@index([leagueEntryId])
   @@index([auctionId, lotId])
+  @@unique([auctionId, lotId, leagueEntryId])
 }
 
 model SurvivorOwnedAdvantage {

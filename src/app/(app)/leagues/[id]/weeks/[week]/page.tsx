@@ -7,6 +7,7 @@ import DragRaceWeekForm from "@/components/commissioner/drag-race-week-form";
 import SurvivorWeekForm from "@/components/commissioner/survivor-week-form";
 import SurvivorWeeklyPredictionForm from "@/components/survivor/weekly-prediction-form";
 import SurvivorBootOrderLockInForm from "@/components/survivor/boot-order-lockin-form";
+import SurvivorAuctionPanel from "@/components/survivor/auction-panel";
 import { survivorWeekPredictionLockAt } from "@/lib/survivor/survivor-rules";
 
 type DragEpisodeWithResults = Prisma.EpisodeGetPayload<{
@@ -431,6 +432,7 @@ export default async function WeekPage({
             isLocked={bootOrderLocked}
             lockReason={bootOrderLockReason}
           />
+          <SurvivorAuctionPanel leagueId={league.id} week={weekNum} />
         </div>
       ) : (
         <div className="mt-6 rounded-md border p-3 text-sm">

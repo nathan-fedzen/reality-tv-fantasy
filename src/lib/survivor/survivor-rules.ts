@@ -23,6 +23,11 @@ export const SURVIVOR_V1_RULES = {
     final3Presence: 5,
     winnerBonus: 10,
   },
+  advantages: {
+    doubleEpisodeMultiplier: 2,
+    idolInsuranceFlat: 8,
+    predictionShieldFloor: 15,
+  },
   endgamePlacementPoints: {
     1: 35,
     2: 25,
