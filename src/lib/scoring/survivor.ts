@@ -17,7 +17,14 @@ export async function recomputeSurvivorWeekScores(
   const [episode, entries, draftPicks, castawayResults] = await Promise.all([
     tx.episode.findUnique({
       where: { id: episodeId },
-      include: { survivorMeta: true },
+      select: {
+        id: true,
+        survivorMeta: {
+          select: {
+            isMerge: true,
+          },
+        },
+      },
     }),
     tx.leagueEntry.findMany({
       where: { leagueId },
