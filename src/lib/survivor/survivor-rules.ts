@@ -28,6 +28,9 @@ export const SURVIVOR_V1_RULES = {
     idolInsuranceFlat: 8,
     predictionShieldFloor: 15,
   },
+  engagement: {
+    lastSurvivorStandingWeekly: 3,
+  },
   endgamePlacementPoints: {
     1: 35,
     2: 25,

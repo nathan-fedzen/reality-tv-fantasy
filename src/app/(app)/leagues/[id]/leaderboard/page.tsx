@@ -30,6 +30,7 @@ type Row = {
   displayName: string;
   email: string | null;
   totalPoints: number;
+  correctEliminationPredictions: number;
   picks: {
     slot: number;
     multiplier: number;
@@ -54,12 +55,13 @@ export default async function LeaderboardPage({
 
   const league = await prisma.league.findUnique({
     where: { id: leagueId },
-    select: { id: true, name: true },
+    select: { id: true, name: true, showType: true },
   });
 
   if (!league) return <main className="p-6">League not found.</main>;
 
   const leagueHref = `/leagues/${league.id}`;
+  const isSurvivor = league.showType === "SURVIVOR";
 
   const entries = await prisma.leagueEntry.findMany({
     where: { leagueId },
@@ -103,6 +105,39 @@ export default async function LeaderboardPage({
     eliminations.map((e) => e.queenId!).filter(Boolean)
   );
 
+  const correctBootPredictionsByEntryId = new Map<string, number>();
+  if (isSurvivor) {
+    const survivorPredictions = await prisma.survivorWeeklyPrediction.findMany({
+      where: {
+        leagueId,
+        bootCastawayId: { not: null },
+      },
+      select: {
+        leagueEntryId: true,
+        bootCastawayId: true,
+        episode: {
+          select: {
+            survivorMeta: {
+              select: {
+                bootCastawayId: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    for (const prediction of survivorPredictions) {
+      const predicted = prediction.bootCastawayId;
+      const actual = prediction.episode.survivorMeta?.bootCastawayId;
+      if (!predicted || !actual || predicted !== actual) continue;
+      correctBootPredictionsByEntryId.set(
+        prediction.leagueEntryId,
+        (correctBootPredictionsByEntryId.get(prediction.leagueEntryId) ?? 0) + 1
+      );
+    }
+  }
+
   const rowsBase = entries.map((e) => {
     const total = totalsByEntryId.get(e.id) ?? 0;
     const display = formatDisplayName(e.user, e.userId);
@@ -113,6 +148,7 @@ export default async function LeaderboardPage({
       displayName: display,
       email: e.user.email,
       totalPoints: total,
+      correctEliminationPredictions: correctBootPredictionsByEntryId.get(e.id) ?? 0,
       picks: e.picks
         .slice()
         .sort((a, b) => a.slot - b.slot)
@@ -130,15 +166,27 @@ export default async function LeaderboardPage({
 
   rowsBase.sort((a, b) => {
     if (b.totalPoints !== a.totalPoints) return b.totalPoints - a.totalPoints;
+    if (
+      isSurvivor &&
+      b.correctEliminationPredictions !== a.correctEliminationPredictions
+    ) {
+      return b.correctEliminationPredictions - a.correctEliminationPredictions;
+    }
     return a.createdAt.getTime() - b.createdAt.getTime();
   });
 
   let currentRank = 0;
   let lastPoints: number | null = null;
+  let lastCorrectPredictions: number | null = null;
   const rankedNow = rowsBase.map((r, idx) => {
-    if (lastPoints === null || r.totalPoints !== lastPoints) {
+    if (
+      lastPoints === null ||
+      r.totalPoints !== lastPoints ||
+      (isSurvivor && r.correctEliminationPredictions !== lastCorrectPredictions)
+    ) {
       currentRank = idx + 1;
       lastPoints = r.totalPoints;
+      lastCorrectPredictions = r.correctEliminationPredictions;
     }
     return { ...r, rank: currentRank };
   });
@@ -163,6 +211,39 @@ export default async function LeaderboardPage({
     const prevWeek = recentWeeks?.[1]?.week ?? null;
 
     if (typeof latestWeek === "number" && typeof prevWeek === "number") {
+      const cumulativeCorrectPredictionsThrough = async (week: number) => {
+        if (!isSurvivor) return new Map<string, number>();
+
+        const survivorPredictions = await prisma.survivorWeeklyPrediction.findMany({
+          where: {
+            leagueId,
+            bootCastawayId: { not: null },
+            episode: {
+              leagueId,
+              week: { lte: week },
+            },
+          },
+          select: {
+            leagueEntryId: true,
+            bootCastawayId: true,
+            episode: {
+              select: {
+                survivorMeta: { select: { bootCastawayId: true } },
+              },
+            },
+          },
+        });
+
+        const map = new Map<string, number>();
+        for (const prediction of survivorPredictions) {
+          const predicted = prediction.bootCastawayId;
+          const actual = prediction.episode.survivorMeta?.bootCastawayId;
+          if (!predicted || !actual || predicted !== actual) continue;
+          map.set(prediction.leagueEntryId, (map.get(prediction.leagueEntryId) ?? 0) + 1);
+        }
+        return map;
+      };
+
       const cumulativeTotalsThrough = async (week: number) => {
         const sums = await prisma.leagueEntryScore.groupBy({
           by: ["leagueEntryId"],
@@ -180,28 +261,46 @@ export default async function LeaderboardPage({
 
       const latestTotals = await cumulativeTotalsThrough(latestWeek);
       const prevTotals = await cumulativeTotalsThrough(prevWeek);
+      const latestCorrectPredictions =
+        await cumulativeCorrectPredictionsThrough(latestWeek);
+      const prevCorrectPredictions =
+        await cumulativeCorrectPredictionsThrough(prevWeek);
 
-      const makeRanks = (totals: Map<string, number>) => {
+      const makeRanks = (
+        totals: Map<string, number>,
+        correctPredictions: Map<string, number>
+      ) => {
         const arr = rankedNow.map((r) => ({
           entryId: r.entryId,
           createdAt: r.createdAt,
           points: totals.get(r.entryId) ?? 0,
+          correctEliminationPredictions: correctPredictions.get(r.entryId) ?? 0,
         }));
 
         arr.sort((a, b) =>
           b.points !== a.points
             ? b.points - a.points
+            : isSurvivor &&
+                b.correctEliminationPredictions !==
+                  a.correctEliminationPredictions
+              ? b.correctEliminationPredictions - a.correctEliminationPredictions
             : a.createdAt.getTime() - b.createdAt.getTime()
         );
 
         let rank = 0;
         let last = null as number | null;
+        let lastCorrect = null as number | null;
         const out = new Map<string, number>();
 
         arr.forEach((it, idx) => {
-          if (last === null || it.points !== last) {
+          if (
+            last === null ||
+            it.points !== last ||
+            (isSurvivor && it.correctEliminationPredictions !== lastCorrect)
+          ) {
             rank = idx + 1;
             last = it.points;
+            lastCorrect = it.correctEliminationPredictions;
           }
           out.set(it.entryId, rank);
         });
@@ -209,8 +308,8 @@ export default async function LeaderboardPage({
         return out;
       };
 
-      const latestRanks = makeRanks(latestTotals);
-      const prevRanks = makeRanks(prevTotals);
+      const latestRanks = makeRanks(latestTotals, latestCorrectPredictions);
+      const prevRanks = makeRanks(prevTotals, prevCorrectPredictions);
 
       movementByEntryId = new Map(
         rankedNow.map((r) => {
@@ -344,8 +443,9 @@ export default async function LeaderboardPage({
                   🎭 Standings
                 </h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Picks are shown below each player. Eliminated queens are struck
-                  through.
+                  {isSurvivor
+                    ? "Ties are broken by total correct elimination predictions."
+                    : "Picks are shown below each player. Eliminated queens are struck through."}
                 </p>
               </div>
 
@@ -433,6 +533,11 @@ export default async function LeaderboardPage({
                                 vs last week
                               </span>
                             </span>
+                            {isSurvivor && (
+                              <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold">
+                                Correct boots: {r.correctEliminationPredictions}
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -447,6 +552,8 @@ export default async function LeaderboardPage({
                       </div>
                     </div>
 
+                    {!isSurvivor && (
+                      <>
                     {/* Picks */}
                     <div className="mt-4 space-y-2">
                       {r.picks.map((p) => (
@@ -494,6 +601,8 @@ export default async function LeaderboardPage({
                         Struck-through queens have been eliminated and can no
                         longer earn points.
                       </div>
+                    )}
+                      </>
                     )}
                   </div>
                 );

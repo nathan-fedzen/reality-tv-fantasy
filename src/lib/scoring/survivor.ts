@@ -380,6 +380,33 @@ export async function recomputeSurvivorWeekScores(
     },
   });
 
+  const survivorsRemainingByEntryId = new Map<string, number>();
+  for (const entry of entries) {
+    const roster = rosterByEntry.get(entry.id) ?? [];
+    let survivorsRemaining = 0;
+    for (const castaway of roster) {
+      const result = resultByCastawayId.get(castaway.castawayId);
+      if (result && result.survived && !result.eliminated) {
+        survivorsRemaining += 1;
+      }
+    }
+    survivorsRemainingByEntryId.set(entry.id, survivorsRemaining);
+  }
+
+  const maxSurvivorsRemaining =
+    survivorsRemainingByEntryId.size > 0
+      ? Math.max(...Array.from(survivorsRemainingByEntryId.values()))
+      : 0;
+
+  const lastSurvivorStandingWinners =
+    maxSurvivorsRemaining > 0
+      ? new Set(
+          Array.from(survivorsRemainingByEntryId.entries())
+            .filter(([, count]) => count === maxSurvivorsRemaining)
+            .map(([entryId]) => entryId)
+        )
+      : new Set<string>();
+
   for (const entry of entries) {
     const roster = rosterByEntry.get(entry.id) ?? [];
 
@@ -533,8 +560,13 @@ export async function recomputeSurvivorWeekScores(
 
     const bootOrderAward = bootOrderAwards.get(entry.id);
     const bootOrderPoints = bootOrderAward?.points ?? 0;
+    const survivorsRemaining = survivorsRemainingByEntryId.get(entry.id) ?? 0;
+    const lastSurvivorStandingPoints = lastSurvivorStandingWinners.has(entry.id)
+      ? SURVIVOR_V1_RULES.engagement.lastSurvivorStandingWeekly
+      : 0;
 
-    const subtotalBeforeAdvantages = performanceTotal + predictionCapped + bootOrderPoints;
+    const subtotalBeforeAdvantages =
+      performanceTotal + predictionCapped + bootOrderPoints + lastSurvivorStandingPoints;
 
     let advantagePoints = 0;
     const advantageEffects: Array<{
@@ -629,6 +661,14 @@ export async function recomputeSurvivorWeekScores(
               ...bootOrderAward.breakdown,
             }
           : { awarded: false, points: 0 },
+        engagement: {
+          survivorsRemaining,
+          maxSurvivorsRemaining,
+          lastSurvivorStanding: {
+            awarded: lastSurvivorStandingPoints > 0,
+            points: lastSurvivorStandingPoints,
+          },
+        },
         advantages: {
           appliedCount: advantageEffects.length,
           points: advantagePoints,
