@@ -903,32 +903,32 @@ export default async function LeaderboardPage({
                   {
                     label: "Performance",
                     value: r.survivorPointsBreakdown.performance,
-                    tone: "text-emerald-300",
+                    tone: "text-emerald-700 dark:text-emerald-300",
                   },
                   {
                     label: "Predictions",
                     value: r.survivorPointsBreakdown.predictions,
-                    tone: "text-sky-300",
+                    tone: "text-sky-700 dark:text-sky-300",
                   },
                   {
                     label: "Boot order",
                     value: r.survivorPointsBreakdown.bootOrder,
-                    tone: "text-violet-300",
+                    tone: "text-violet-700 dark:text-violet-300",
                   },
                   {
                     label: "Last survivor standing",
                     value: r.survivorPointsBreakdown.lastSurvivorStanding,
-                    tone: "text-amber-300",
+                    tone: "text-amber-700 dark:text-amber-300",
                   },
                   {
                     label: "Advantages",
                     value: r.survivorPointsBreakdown.advantages,
-                    tone: "text-pink-300",
+                    tone: "text-pink-700 dark:text-pink-300",
                   },
                   {
                     label: "Other",
                     value: r.survivorPointsBreakdown.other,
-                    tone: "text-muted-foreground",
+                    tone: "text-foreground dark:text-muted-foreground",
                   },
                 ];
 
@@ -951,7 +951,7 @@ export default async function LeaderboardPage({
 
                     <div className="grid gap-3 md:grid-cols-2">
                       <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/10 p-3">
-                        <div className="text-xs font-semibold uppercase tracking-[0.08em] text-emerald-200">
+                        <div className="text-xs font-semibold uppercase tracking-[0.08em] text-emerald-800 dark:text-emerald-200">
                           Active survivors
                         </div>
                         <AnimatedList
@@ -978,7 +978,7 @@ export default async function LeaderboardPage({
                       </div>
 
                       <div className="rounded-2xl border border-destructive/30 bg-destructive/10 p-3">
-                        <div className="text-xs font-semibold uppercase tracking-[0.08em] text-red-200">
+                        <div className="text-xs font-semibold uppercase tracking-[0.08em] text-red-800 dark:text-red-200">
                           Eliminated survivors
                         </div>
                         <AnimatedList
