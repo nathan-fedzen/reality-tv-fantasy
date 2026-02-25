@@ -8,10 +8,19 @@ import DeleteLeagueButton from "@/components/delete-league-button";
 import InviteControls from "@/components/invite-controls";
 import LeaguePageNav from "@/components/league-page-nav";
 import StartLeagueButton from "@/components/start-league-button";
+import { SURVIVOR_SEASON_WEEKS } from "@/lib/survivor/season";
 
 function toNumber(d: Prisma.Decimal | null | undefined) {
   if (d == null) return 0;
   return Number(d.toString());
+}
+
+function userLabel(user: {
+  displayName: string | null;
+  name: string | null;
+  email: string | null;
+}) {
+  return user.displayName ?? user.name ?? user.email ?? "Unknown";
 }
 
 type SurvivorTiebreakPrediction = {
@@ -91,7 +100,9 @@ export default async function LeaguePage({
   const league = await prisma.league.findUnique({
     where: { id },
     include: {
-      members: { include: { user: { select: { email: true, name: true } } } },
+      members: {
+        include: { user: { select: { displayName: true, email: true, name: true } } },
+      },
       invites: { take: 1, orderBy: { createdAt: "desc" } },
       survivorCastaways: {
         select: { id: true, name: true, tribe: true },
@@ -122,11 +133,18 @@ export default async function LeaguePage({
   const hasStarted =
     league.startedAt !== null || (league.startsAt ? now >= league.startsAt : false);
 
-  const [allEntries, groupedScores, myEntry, eliminatedRows, survivorPredictions] =
+  const [
+    allEntries,
+    groupedScores,
+    myEntry,
+    eliminatedRows,
+    survivorPredictions,
+    survivorEpisodes,
+  ] =
     await Promise.all([
       prisma.leagueEntry.findMany({
         where: { leagueId: id },
-        select: { id: true, createdAt: true },
+        select: { id: true, userId: true, createdAt: true },
       }),
       prisma.leagueEntryScore.groupBy({
         by: ["leagueEntryId"],
@@ -156,11 +174,27 @@ export default async function LeaguePage({
               secondaryBootCastawayId: true,
               episode: {
                 select: {
+                  week: true,
                   survivorCastawayResults: {
                     where: { eliminated: true },
                     select: { castawayId: true },
                   },
                 },
+              },
+            },
+          })
+        : Promise.resolve([]),
+      isSurvivor
+        ? prisma.episode.findMany({
+            where: {
+              leagueId: id,
+              week: { lte: SURVIVOR_SEASON_WEEKS },
+            },
+            select: {
+              week: true,
+              survivorCastawayResults: {
+                select: { id: true },
+                take: 1,
               },
             },
           })
@@ -201,25 +235,21 @@ export default async function LeaguePage({
       return a.createdAt.getTime() - b.createdAt.getTime();
     });
 
-  let currentRank = 0;
-  let lastPoints: number | null = null;
-  let lastCorrectBoots: number | null = null;
-  const rankedWithPlace = rankedEntries.map((entry, idx) => {
-    if (
-      lastPoints === null ||
-      entry.points !== lastPoints ||
-      (isSurvivor && entry.correctBoots !== lastCorrectBoots)
-    ) {
-      currentRank = idx + 1;
-      lastPoints = entry.points;
-      lastCorrectBoots = entry.correctBoots;
-    }
+  const rankedWithPlace = rankedEntries.reduce<
+    Array<(typeof rankedEntries)[number] & { rank: number }>
+  >((acc, entry) => {
+    const previous = acc[acc.length - 1];
+    const sameRankAsPrevious =
+      !!previous &&
+      entry.points === previous.points &&
+      (!isSurvivor || entry.correctBoots === previous.correctBoots);
 
-    return {
+    acc.push({
       ...entry,
-      rank: currentRank,
-    };
-  });
+      rank: sameRankAsPrevious ? previous.rank : acc.length + 1,
+    });
+    return acc;
+  }, []);
 
   const eliminatedCastawayIds = new Set(eliminatedRows.map((row) => row.castawayId));
   const myStanding = myEntry
@@ -232,6 +262,65 @@ export default async function LeaguePage({
   }));
   const myAliveSurvivors = mySurvivors.filter((survivor) => !survivor.eliminated);
   const myEliminatedSurvivors = mySurvivors.filter((survivor) => survivor.eliminated);
+  const weeklySubmissionTracker = isSurvivor
+    ? (() => {
+        const memberRows = league.members
+          .map((member) => ({
+            userId: member.userId,
+            name: userLabel(member.user),
+          }))
+          .sort((a, b) => a.name.localeCompare(b.name));
+
+        const enteredWeeks = new Set(
+          survivorEpisodes
+            .filter((episode) => episode.survivorCastawayResults.length > 0)
+            .map((episode) => episode.week)
+        );
+
+        const targetWeek =
+          Array.from({ length: SURVIVOR_SEASON_WEEKS }, (_, i) => i + 1).find(
+            (weekNum) => !enteredWeeks.has(weekNum)
+          ) ?? null;
+
+        if (targetWeek === null) {
+          return {
+            week: null,
+            submittedNames: [] as string[],
+            pendingNames: [] as string[],
+            submittedCount: 0,
+            totalCount: memberRows.length,
+            seasonComplete: true,
+          };
+        }
+
+        const entryUserById = new Map(allEntries.map((entry) => [entry.id, entry.userId]));
+        const submittedUserIds = new Set<string>();
+        for (const prediction of survivorPredictions) {
+          if (prediction.episode.week !== targetWeek) continue;
+          const userId = entryUserById.get(prediction.leagueEntryId);
+          if (userId) submittedUserIds.add(userId);
+        }
+
+        const submittedNames: string[] = [];
+        const pendingNames: string[] = [];
+        for (const member of memberRows) {
+          if (submittedUserIds.has(member.userId)) {
+            submittedNames.push(member.name);
+          } else {
+            pendingNames.push(member.name);
+          }
+        }
+
+        return {
+          week: targetWeek,
+          submittedNames,
+          pendingNames,
+          submittedCount: submittedNames.length,
+          totalCount: memberRows.length,
+          seasonComplete: false,
+        };
+      })()
+    : null;
 
   return (
     <main className="min-h-[calc(100vh-56px)] bg-transparent">
@@ -394,6 +483,73 @@ export default async function LeaguePage({
                   </Link>
                 </>
               )}
+
+              {isSurvivor && weeklySubmissionTracker && (
+                <div className="mt-3 rounded-xl border border-border bg-card px-3 py-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold">Weekly picks status</span>
+                    <span className="font-semibold text-muted-foreground">
+                      {weeklySubmissionTracker.seasonComplete
+                        ? "Season complete"
+                        : `Week ${weeklySubmissionTracker.week}`}
+                    </span>
+                  </div>
+
+                  {weeklySubmissionTracker.seasonComplete ? (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      All season weeks already have official results.
+                    </p>
+                  ) : (
+                    <>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {weeklySubmissionTracker.submittedCount}/
+                        {weeklySubmissionTracker.totalCount} players submitted.
+                        Resets to the next week when commissioner saves results.
+                      </p>
+
+                      <div className="mt-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
+                          Submitted
+                        </p>
+                        <div className="mt-1 flex flex-wrap gap-1.5">
+                          {weeklySubmissionTracker.submittedNames.length === 0 ? (
+                            <span className="text-xs text-muted-foreground">No submissions yet</span>
+                          ) : (
+                            weeklySubmissionTracker.submittedNames.map((name) => (
+                              <span
+                                key={`submitted-${name}`}
+                                className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs"
+                              >
+                                {name}
+                              </span>
+                            ))
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="mt-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">
+                          Not submitted
+                        </p>
+                        <div className="mt-1 flex flex-wrap gap-1.5">
+                          {weeklySubmissionTracker.pendingNames.length === 0 ? (
+                            <span className="text-xs text-muted-foreground">Everyone submitted</span>
+                          ) : (
+                            weeklySubmissionTracker.pendingNames.map((name) => (
+                              <span
+                                key={`pending-${name}`}
+                                className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs"
+                              >
+                                {name}
+                              </span>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           </aside>
 
@@ -406,7 +562,7 @@ export default async function LeaguePage({
                   key={m.id}
                   className="flex items-center justify-between rounded-xl border border-border bg-background/60 px-3 py-2"
                 >
-                  <span className="truncate">{m.user.name || m.user.email}</span>
+                  <span className="truncate">{userLabel(m.user)}</span>
                   <span className="text-xs font-semibold text-muted-foreground">{m.role}</span>
                 </li>
               ))}
