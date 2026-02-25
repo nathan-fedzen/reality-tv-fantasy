@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import Aurora from "@/components/Aurora";
 import LogoutButton from "@/components/logout-button";
 
 export const dynamic = "force-dynamic";
@@ -55,8 +56,17 @@ export default async function DashboardPage() {
   }));
 
   return (
-    <main className="min-h-[calc(100vh-56px)] bg-background">
-      <div className="mx-auto w-full max-w-5xl px-4 sm:px-6 py-8 pb-12">
+    <main className="relative min-h-[calc(100vh-56px)] overflow-hidden bg-background">
+      <div className="pointer-events-none absolute inset-0">
+        <Aurora
+          colorStops={["#7cff67", "#B19EEF", "#5227FF"]}
+          blend={0.5}
+          amplitude={1.0}
+          speed={1}
+        />
+      </div>
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-background/70 via-background/85 to-background/75" />
+      <div className="relative z-10 mx-auto w-full max-w-5xl px-4 py-8 pb-12 sm:px-6">
         {/* Top row */}
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -70,12 +80,12 @@ export default async function DashboardPage() {
         </div>
 
         {/* Hero panel */}
-        <div className="mt-6 relative overflow-hidden rounded-3xl border border-border bg-gradient-to-br from-primary/12 via-background to-secondary/12 p-6 shadow-sm">
+        <div className="mt-6 relative overflow-hidden rounded-3xl border border-border bg-gradient-to-br from-primary/12 via-background/80 to-secondary/12 p-6 shadow-sm">
           {/* “sparkles” */}
           <div className="pointer-events-none absolute -top-16 -right-16 h-56 w-56 rounded-full bg-primary/15 blur-3xl" />
           <div className="pointer-events-none absolute -bottom-16 -left-16 h-56 w-56 rounded-full bg-secondary/15 blur-3xl" />
 
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <div className="inline-flex items-center gap-2 rounded-full bg-background/70 px-3 py-1 text-xs font-semibold ring-1 ring-border">
                 <span aria-hidden>🎬</span> Game Night Mode

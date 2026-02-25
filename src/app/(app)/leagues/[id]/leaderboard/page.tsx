@@ -6,6 +6,8 @@ import { Prisma } from "@prisma/client";
 import ConfettiBurst from "@/components/confetti-burst";
 import AnimatedList from "@/components/ui/animated-list";
 import ElectricBorder from "@/components/ElectricBorder";
+import LeaguePageNav from "@/components/league-page-nav";
+import LightRays from "@/components/LightRays";
 
 function formatDisplayName(
   user: { displayName?: string | null; name: string | null; email: string | null },
@@ -159,13 +161,14 @@ export default async function LeaderboardPage({
 
   const league = await prisma.league.findUnique({
     where: { id: leagueId },
-    select: { id: true, name: true, showType: true },
+    select: { id: true, name: true, showType: true, createdById: true },
   });
 
   if (!league) return <main className="p-6">League not found.</main>;
 
   const leagueHref = `/leagues/${league.id}`;
   const isSurvivor = league.showType === "SURVIVOR";
+  const isCommissioner = league.createdById === user.id;
 
   const entries = await prisma.leagueEntry.findMany({
     where: { leagueId },
@@ -538,7 +541,7 @@ export default async function LeaderboardPage({
   const flameContainerBorderColor = "#7a1f16";
 
   return (
-    <main className="min-h-[calc(100vh-56px)] bg-background">
+    <main className="min-h-[calc(100vh-56px)] bg-transparent">
       <div className="mx-auto w-full max-w-5xl px-4 sm:px-6 py-8 pb-12 space-y-6">
         {/* Header (mobile-first) */}
         <ElectricBorder
@@ -576,6 +579,13 @@ export default async function LeaderboardPage({
           </div>
         </ElectricBorder>
 
+        <LeaguePageNav
+          leagueId={league.id}
+          showType={league.showType}
+          isCommissioner={isCommissioner}
+          currentPage="leaderboard"
+        />
+
         {/* Podium */}
         {ranked.length > 0 && (
           <ElectricBorder
@@ -588,6 +598,24 @@ export default async function LeaderboardPage({
           >
             <section className="relative overflow-hidden rounded-3xl bg-card shadow-sm">
               <ConfettiBurst triggerKey={winnerKey} />
+              <div className="pointer-events-none absolute inset-0 opacity-45">
+                <LightRays
+                  raysOrigin="top-center"
+                  raysColor="#ffffff"
+                  raysSpeed={1.2}
+                  lightSpread={2}
+                  rayLength={3}
+                  followMouse
+                  mouseInfluence={0}
+                  noiseAmount={0}
+                  distortion={0}
+                  className="absolute inset-0"
+                  pulsating={false}
+                  fadeDistance={2}
+                  saturation={1.3}
+                />
+              </div>
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-background/10 via-transparent to-background/40" />
 
             <div className="relative z-10 p-5">
               <h2 className="text-base font-semibold flex items-center gap-2">

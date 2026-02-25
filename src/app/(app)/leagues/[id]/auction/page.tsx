@@ -1,7 +1,7 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import LeaguePageNav from "@/components/league-page-nav";
 import AuctionPageClient from "./auction-page-client";
 
 export default async function SurvivorAuctionPage({
@@ -37,13 +37,13 @@ export default async function SurvivorAuctionPage({
   const isCommissioner = league.createdById === user.id;
 
   return (
-    <main className="min-h-[calc(100vh-56px)] bg-background">
+    <main className="min-h-[calc(100vh-56px)] bg-transparent">
       <div className="mx-auto max-w-5xl px-4 py-8 pb-12 sm:px-6 space-y-6">
         <div className="relative overflow-hidden rounded-3xl border border-border bg-gradient-to-br from-primary/12 via-background to-secondary/12 p-6 shadow-sm">
           <div className="pointer-events-none absolute -top-16 -right-16 h-56 w-56 rounded-full bg-primary/20 blur-3xl" />
           <div className="pointer-events-none absolute -bottom-16 -left-16 h-56 w-56 rounded-full bg-secondary/20 blur-3xl" />
 
-          <div className="relative z-10 flex items-start justify-between gap-4">
+          <div className="relative z-10">
             <div>
               <div className="inline-flex items-center gap-2 rounded-full bg-background/70 px-3 py-1 text-xs font-semibold ring-1 ring-border">
                 Survivor Auction
@@ -55,14 +55,15 @@ export default async function SurvivorAuctionPage({
                 Bid with league currency and manage your advantages.
               </p>
             </div>
-
-            <Link
-              href={`/leagues/${league.id}`}
-              className="rounded-full border border-border bg-card px-4 py-2 text-sm font-semibold hover:bg-accent transition"
-            >
-              Back
-            </Link>
           </div>
+
+          <LeaguePageNav
+            leagueId={league.id}
+            showType={league.showType}
+            isCommissioner={isCommissioner}
+            currentPage="auction"
+            className="relative z-10 mt-5"
+          />
         </div>
 
         <AuctionPageClient

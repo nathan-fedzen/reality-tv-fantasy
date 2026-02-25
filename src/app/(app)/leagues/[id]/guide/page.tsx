@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import LeaguePageNav from "@/components/league-page-nav";
 import {
   SURVIVOR_V1_RULES,
   survivorWeekPredictionLockAt,
@@ -40,6 +41,7 @@ export default async function SurvivorPlayerGuidePage({
       id: true,
       name: true,
       showType: true,
+      createdById: true,
       startsAt: true,
       startedAt: true,
       members: {
@@ -89,6 +91,7 @@ export default async function SurvivorPlayerGuidePage({
   const now = new Date();
   const hasStarted =
     league.startedAt !== null || (league.startsAt ? now >= league.startsAt : false);
+  const isCommissioner = league.createdById === user.id;
 
   const myEntry = await prisma.leagueEntry.upsert({
     where: {
@@ -291,14 +294,14 @@ export default async function SurvivorPlayerGuidePage({
     .sort((a, b) => a.placement - b.placement);
 
   return (
-    <main className="min-h-[calc(100vh-56px)] bg-background">
+    <main className="min-h-[calc(100vh-56px)] bg-transparent">
       <div className="mx-auto max-w-6xl px-4 py-8 pb-14 sm:px-6">
         <section className="relative overflow-hidden rounded-3xl border border-border bg-gradient-to-br from-primary/20 via-background to-secondary/20 p-6 shadow-sm sm:p-8">
           <div className="pointer-events-none absolute -right-10 -top-16 h-52 w-52 rounded-full bg-primary/20 blur-3xl" />
           <div className="pointer-events-none absolute -bottom-16 -left-16 h-64 w-64 rounded-full bg-secondary/20 blur-3xl" />
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_75%_15%,hsl(var(--primary)/0.20),transparent_40%)]" />
 
-          <div className="relative z-10 flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+          <div className="relative z-10">
             <div className="min-w-0">
               <div className="inline-flex rounded-full border border-border bg-background/70 px-3 py-1 text-xs font-semibold">
                 Survivor Player Guide
@@ -309,14 +312,15 @@ export default async function SurvivorPlayerGuidePage({
                 happen, and how to win tiebreaks.
               </p>
             </div>
-
-            <Link
-              href={`/leagues/${league.id}`}
-              className="inline-flex rounded-full border border-border bg-card px-4 py-2 text-sm font-semibold shadow-sm transition hover:bg-accent"
-            >
-              Back to league hub
-            </Link>
           </div>
+
+          <LeaguePageNav
+            leagueId={league.id}
+            showType={league.showType}
+            isCommissioner={isCommissioner}
+            currentPage="guide"
+            className="relative z-10 mt-5"
+          />
 
           <div className="relative z-10 mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div className="rounded-2xl border border-border/70 bg-background/80 p-3">

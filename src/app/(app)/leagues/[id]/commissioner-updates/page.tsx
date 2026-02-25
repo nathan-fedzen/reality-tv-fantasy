@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import LeaguePageNav from "@/components/league-page-nav";
 import { SURVIVOR_SEASON_WEEKS } from "@/lib/survivor/season";
 
 export default async function SurvivorCommissionerUpdatesIndexPage({
@@ -46,15 +47,18 @@ export default async function SurvivorCommissionerUpdatesIndexPage({
 
   return (
     <main className="mx-auto w-full max-w-4xl px-4 pb-10 pt-6 sm:px-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Commissioner updates</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{league.name}</p>
-        </div>
-        <Link className="text-sm underline" href={`/leagues/${league.id}/weeks`}>
-          Back to weeks
-        </Link>
+      <div>
+        <h1 className="text-2xl font-semibold">Commissioner updates</h1>
+        <p className="mt-1 text-sm text-muted-foreground">{league.name}</p>
       </div>
+
+      <LeaguePageNav
+        leagueId={league.id}
+        showType={league.showType}
+        isCommissioner
+        currentPage="commissioner-updates"
+        className="mt-4"
+      />
 
       <p className="mt-3 text-sm text-muted-foreground">
         Select a week to enter official Survivor results. This season is set to{" "}

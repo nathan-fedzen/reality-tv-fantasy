@@ -6,6 +6,7 @@ import { Prisma } from "@prisma/client";
 import CopyButton from "@/components/copy-button";
 import DeleteLeagueButton from "@/components/delete-league-button";
 import InviteControls from "@/components/invite-controls";
+import LeaguePageNav from "@/components/league-page-nav";
 import StartLeagueButton from "@/components/start-league-button";
 
 function toNumber(d: Prisma.Decimal | null | undefined) {
@@ -233,7 +234,7 @@ export default async function LeaguePage({
   const myEliminatedSurvivors = mySurvivors.filter((survivor) => survivor.eliminated);
 
   return (
-    <main className="min-h-[calc(100vh-56px)] bg-background">
+    <main className="min-h-[calc(100vh-56px)] bg-transparent">
       <div className="mx-auto max-w-5xl px-4 py-8 pb-12 sm:px-6">
         <div className="relative overflow-hidden rounded-3xl border border-border bg-gradient-to-br from-primary/12 via-background to-secondary/12 p-6 shadow-sm">
           <div className="pointer-events-none absolute -right-16 -top-16 -z-10 h-56 w-56 rounded-full bg-primary/20 blur-3xl" />
@@ -279,56 +280,13 @@ export default async function LeaguePage({
             <InviteControls leagueId={league.id} isActive={inviteIsActive} />
           </div>
 
-          <div className="mt-5 flex flex-wrap gap-2">
-            <Link
-              href={`/leagues/${league.id}`}
-              className="rounded-full bg-primary px-4 py-1.5 text-sm font-semibold text-primary-foreground shadow-sm"
-            >
-              Overview
-            </Link>
-            <Link
-              href={`/leagues/${league.id}/leaderboard`}
-              className="rounded-full border border-border bg-card px-4 py-1.5 text-sm font-semibold transition hover:bg-accent"
-            >
-              Leaderboard
-            </Link>
-            <Link
-              href={`/leagues/${league.id}/picks`}
-              className="rounded-full border border-border bg-card px-4 py-1.5 text-sm font-semibold transition hover:bg-accent"
-            >
-              {league.showType === "SURVIVOR" ? "Draft" : "Picks"}
-            </Link>
-            <Link
-              href={`/leagues/${league.id}/weeks`}
-              className="rounded-full border border-border bg-card px-4 py-1.5 text-sm font-semibold transition hover:bg-accent"
-            >
-              Weeks
-            </Link>
-            {league.showType === "SURVIVOR" && (
-              <Link
-                href={`/leagues/${league.id}/guide`}
-                className="rounded-full border border-primary/40 bg-primary/10 px-4 py-1.5 text-sm font-semibold text-primary transition hover:bg-primary/15"
-              >
-                Player Guide
-              </Link>
-            )}
-            {league.showType === "SURVIVOR" && (
-              <Link
-                href={`/leagues/${league.id}/auction`}
-                className="rounded-full border border-border bg-card px-4 py-1.5 text-sm font-semibold transition hover:bg-accent"
-              >
-                Auction House
-              </Link>
-            )}
-            {league.showType === "SURVIVOR" && isCreator && (
-              <Link
-                href={`/leagues/${league.id}/commissioner-updates`}
-                className="rounded-full border border-primary/40 bg-primary/10 px-4 py-1.5 text-sm font-semibold text-primary transition hover:bg-primary/15"
-              >
-                Commissioner Updates
-              </Link>
-            )}
-          </div>
+          <LeaguePageNav
+            leagueId={league.id}
+            showType={league.showType}
+            isCommissioner={isCreator}
+            currentPage="overview"
+            className="mt-5"
+          />
         </div>
 
         <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
