@@ -35,7 +35,6 @@ type SurvivorEpisodeWithResults = Prisma.EpisodeGetPayload<{
         idolsPlayedSuccessfully: true;
         votesReceived: true;
         confessionalCount: true;
-        confessionalLeader: true;
         endgamePlacement: true;
       };
     };
@@ -115,7 +114,6 @@ export default async function SurvivorCommissionerWeekPage({
             idolsPlayedSuccessfully: true,
             votesReceived: true,
             confessionalCount: true,
-            confessionalLeader: true,
             endgamePlacement: true,
           },
         },
@@ -129,8 +127,27 @@ export default async function SurvivorCommissionerWeekPage({
     }
   }
 
+  const eliminatedBeforeWeek =
+    weekNum > 1
+      ? await prisma.survivorEpisodeCastawayResult.findMany({
+          where: {
+            leagueId: league.id,
+            eliminated: true,
+            episode: { week: { lt: weekNum } },
+          },
+          select: { castawayId: true },
+          distinct: ["castawayId"],
+        })
+      : [];
+  const eliminatedBeforeWeekIds = eliminatedBeforeWeek.map((row) => row.castawayId);
+
   const castaways = await prisma.survivorCastaway.findMany({
-    where: { leagueId: league.id },
+    where: {
+      leagueId: league.id,
+      ...(eliminatedBeforeWeekIds.length > 0
+        ? { id: { notIn: eliminatedBeforeWeekIds } }
+        : {}),
+    },
     orderBy: { name: "asc" },
     select: { id: true, name: true, tribe: true },
   });
@@ -193,8 +210,6 @@ export default async function SurvivorCommissionerWeekPage({
             }
             existingResults={(survivorEpisode?.survivorCastawayResults ?? []).map((row) => ({
               castawayId: row.castawayId,
-              survived: row.survived,
-              eliminated: row.eliminated,
               individualImmunityWins: row.individualImmunityWins,
               tribeImmunityWins: row.tribeImmunityWins,
               individualRewardWins: row.individualRewardWins,
@@ -202,7 +217,6 @@ export default async function SurvivorCommissionerWeekPage({
               idolsPlayedSuccessfully: row.idolsPlayedSuccessfully,
               votesReceived: row.votesReceived,
               confessionalCount: row.confessionalCount,
-              confessionalLeader: row.confessionalLeader,
               endgamePlacement: row.endgamePlacement,
             }))}
             isCommissioner

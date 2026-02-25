@@ -135,6 +135,7 @@ export async function GET(
         id: true,
         showType: true,
         startsAt: true,
+        startedAt: true,
         members: { where: { userId: user.id }, select: { id: true } },
       },
     });
@@ -142,6 +143,10 @@ export async function GET(
     if (league.showType !== "SURVIVOR") return errorResponse("Ruleset not implemented", 400);
     if (weekNum > SURVIVOR_SEASON_WEEKS) return errorResponse("Invalid week", 400);
     if (league.members.length === 0) return errorResponse("Forbidden", 403);
+    const now = new Date();
+    const hasStarted =
+      league.startedAt !== null || (league.startsAt ? now >= league.startsAt : false);
+    if (!hasStarted) return errorResponse("League not started", 403);
 
     const [entry, episode] = await Promise.all([
       prisma.leagueEntry.upsert({
@@ -195,10 +200,9 @@ export async function GET(
       : null;
 
     const lockAt = survivorWeekPredictionLockAt(league.startsAt, weekNum, episode?.lockedAt);
-    const now = new Date();
     const resultsLocked = !!episode?.survivorMeta?.lockedAt;
     const timeLocked = lockAt ? now >= lockAt : false;
-    const isLocked = resultsLocked || timeLocked || !!existing;
+    const isLocked = resultsLocked || timeLocked;
     const tribalCount = Math.max(
       1,
       episode?.survivorMeta?.tribalCount ?? (weekNum === 1 ? 2 : 1)
@@ -244,6 +248,7 @@ export async function PUT(
         id: true,
         showType: true,
         startsAt: true,
+        startedAt: true,
         members: { where: { userId: user.id }, select: { id: true } },
       },
     });
@@ -251,6 +256,10 @@ export async function PUT(
     if (league.showType !== "SURVIVOR") return errorResponse("Ruleset not implemented.", 400);
     if (weekNum > SURVIVOR_SEASON_WEEKS) return errorResponse("Invalid week.", 400);
     if (league.members.length === 0) return errorResponse("Forbidden", 403);
+    const now = new Date();
+    const hasStarted =
+      league.startedAt !== null || (league.startsAt ? now >= league.startsAt : false);
+    if (!hasStarted) return errorResponse("League not started.", 403);
 
     const result = await prisma.$transaction(async (tx) => {
       const [entry, episode] = await Promise.all([
@@ -273,7 +282,6 @@ export async function PUT(
       ]);
 
       const lockAt = survivorWeekPredictionLockAt(league.startsAt, weekNum, episode.lockedAt);
-      const now = new Date();
       const resultsLocked = !!episode.survivorMeta?.lockedAt;
       const timeLocked = lockAt ? now >= lockAt : false;
       if (resultsLocked || timeLocked) {
@@ -291,17 +299,6 @@ export async function PUT(
       if (tribals.length !== expectedTribalCount) {
         throw new Error("INVALID_TRIBAL_COUNT");
       }
-
-      const existing = await tx.survivorWeeklyPrediction.findUnique({
-        where: {
-          episodeId_leagueEntryId: {
-            episodeId: episode.id,
-            leagueEntryId: entry.id,
-          },
-        },
-        select: { id: true },
-      });
-      if (existing) throw new Error("PREDICTION_ALREADY_SUBMITTED");
 
       const predictedBoots = new Set<string>();
       for (let i = 0; i < tribals.length; i += 1) {
@@ -398,27 +395,38 @@ export async function PUT(
       const firstTribal = tribals[0];
       const secondTribal = tribals[1] ?? null;
 
-      const created = await tx.survivorWeeklyPrediction.create({
-        data: {
-          leagueId: league.id,
-          episodeId: episode.id,
-          leagueEntryId: entry.id,
-          tribals: tribals as unknown as Prisma.InputJsonValue,
-          ...(finalPlacementsForStore
-            ? { finalPlacements: finalPlacementsForStore }
-            : {}),
-          bootCastawayId: firstTribal?.bootCastawayId ?? null,
-          secondaryBootCastawayId: secondTribal?.bootCastawayId ?? null,
-          bootVoteCount: firstTribal?.bootVoteCount ?? null,
-          secondaryBootVoteCount: secondTribal?.bootVoteCount ?? null,
-          immunityWinnerCastawayId: firstTribal?.immunityWinnerCastawayId ?? null,
-          secondaryImmunityWinnerCastawayId:
-            secondTribal?.immunityWinnerCastawayId ?? null,
-          idolPlayed,
-          safePickCastawayId: firstTribal?.safePickCastawayId ?? null,
-          secondarySafePickCastawayId: secondTribal?.safePickCastawayId ?? null,
-          submittedAt: now,
+      const predictionData = {
+        leagueId: league.id,
+        episodeId: episode.id,
+        leagueEntryId: entry.id,
+        tribals: tribals as unknown as Prisma.InputJsonValue,
+        ...(finalPlacementsForStore
+          ? { finalPlacements: finalPlacementsForStore }
+          : { finalPlacements: Prisma.JsonNull }),
+        bootCastawayId: firstTribal?.bootCastawayId ?? null,
+        secondaryBootCastawayId: secondTribal?.bootCastawayId ?? null,
+        bootVoteCount: firstTribal?.bootVoteCount ?? null,
+        secondaryBootVoteCount: secondTribal?.bootVoteCount ?? null,
+        immunityWinnerCastawayId: firstTribal?.immunityWinnerCastawayId ?? null,
+        secondaryImmunityWinnerCastawayId: secondTribal?.immunityWinnerCastawayId ?? null,
+        idolPlayed,
+        safePickCastawayId: firstTribal?.safePickCastawayId ?? null,
+        secondarySafePickCastawayId: secondTribal?.safePickCastawayId ?? null,
+        submittedAt: now,
+        scoredAt: null,
+        points: new Prisma.Decimal(0),
+        breakdown: Prisma.JsonNull,
+      };
+
+      const saved = await tx.survivorWeeklyPrediction.upsert({
+        where: {
+          episodeId_leagueEntryId: {
+            episodeId: episode.id,
+            leagueEntryId: entry.id,
+          },
         },
+        create: predictionData,
+        update: predictionData,
         select: {
           id: true,
           tribals: true,
@@ -436,23 +444,20 @@ export async function PUT(
         },
       });
 
-      return { created, lockAt, tribalCount: expectedTribalCount };
+      return { saved, lockAt, tribalCount: expectedTribalCount };
     });
 
     return NextResponse.json({
       ok: true,
-      prediction: result.created,
+      prediction: result.saved,
       lockAt: result.lockAt,
       tribalCount: result.tribalCount,
-      message: "Prediction submitted.",
+      message: "Prediction saved.",
     });
   } catch (err) {
     if (err instanceof Error) {
       if (err.message === "PREDICTIONS_LOCKED") {
         return errorResponse("Predictions are locked for this week.", 403);
-      }
-      if (err.message === "PREDICTION_ALREADY_SUBMITTED") {
-        return errorResponse("You already submitted this week's prediction.", 409);
       }
       if (err.message === "INVALID_CASTAWAY") {
         return errorResponse("Prediction includes castaways outside this league.", 400);
@@ -497,11 +502,6 @@ export async function PUT(
         );
       }
     }
-
-    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
-      return errorResponse("You already submitted this week's prediction.", 409);
-    }
-
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2022") {
       return errorResponse(
         "Database schema is behind this deployment (missing column). Run `npx prisma migrate deploy` on production and redeploy.",

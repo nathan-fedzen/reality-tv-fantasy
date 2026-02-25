@@ -15,8 +15,6 @@ type DragRaceWeekPayload = {
 
 type SurvivorCastawayResultPayload = {
   castawayId: string;
-  survived: boolean;
-  eliminated: boolean;
   individualImmunityWins: number;
   tribeImmunityWins: number;
   individualRewardWins: number;
@@ -24,7 +22,6 @@ type SurvivorCastawayResultPayload = {
   idolsPlayedSuccessfully: number;
   votesReceived: number;
   confessionalCount: number;
-  confessionalLeader: boolean;
   endgamePlacement: number | null;
 };
 
@@ -95,6 +92,66 @@ function normalizeTribalResults(body: SurvivorWeekPayload) {
   }
 
   return out;
+}
+
+async function recalculateConfessionalLeaders(
+  tx: Prisma.TransactionClient,
+  leagueId: string
+) {
+  const episodes = await tx.episode.findMany({
+    where: { leagueId },
+    orderBy: { week: "asc" },
+    select: {
+      id: true,
+      survivorCastawayResults: {
+        select: {
+          castawayId: true,
+          confessionalCount: true,
+        },
+      },
+    },
+  });
+
+  const cumulativeByCastawayId = new Map<string, number>();
+
+  for (const episode of episodes) {
+    for (const row of episode.survivorCastawayResults) {
+      cumulativeByCastawayId.set(
+        row.castawayId,
+        (cumulativeByCastawayId.get(row.castawayId) ?? 0) + row.confessionalCount
+      );
+    }
+
+    if (episode.survivorCastawayResults.length === 0) continue;
+
+    let maxTotal = 0;
+    for (const row of episode.survivorCastawayResults) {
+      const total = cumulativeByCastawayId.get(row.castawayId) ?? 0;
+      if (total > maxTotal) maxTotal = total;
+    }
+
+    const leaderIds =
+      maxTotal > 0
+        ? episode.survivorCastawayResults
+            .filter((row) => (cumulativeByCastawayId.get(row.castawayId) ?? 0) === maxTotal)
+            .map((row) => row.castawayId)
+        : [];
+
+    await tx.survivorEpisodeCastawayResult.updateMany({
+      where: { episodeId: episode.id },
+      data: { confessionalLeader: false },
+    });
+
+    if (leaderIds.length > 0) {
+      await tx.survivorEpisodeCastawayResult.updateMany({
+        where: {
+          episodeId: episode.id,
+          castawayId: { in: leaderIds },
+        },
+        data: { confessionalLeader: true },
+      });
+    }
+  }
 }
 
 function prismaErrorToResponse(err: unknown) {
@@ -341,6 +398,7 @@ export async function PUT(
         }
 
         await prisma.$transaction(async (tx) => {
+          await recalculateConfessionalLeaders(tx, league.id);
           await recomputeSurvivorWeekScores(tx, league.id, existingEpisode.id);
         });
         return NextResponse.json({
@@ -478,10 +536,8 @@ export async function PUT(
         );
       }
 
-      const sanitizedResults: Array<{
+      const parsedResults: Array<{
         castawayId: string;
-        survived: boolean;
-        eliminated: boolean;
         individualImmunityWins: number;
         tribeImmunityWins: number;
         individualRewardWins: number;
@@ -489,7 +545,6 @@ export async function PUT(
         idolsPlayedSuccessfully: number;
         votesReceived: number;
         confessionalCount: number;
-        confessionalLeader: boolean;
         endgamePlacement: number | null;
       }> = [];
 
@@ -529,13 +584,8 @@ export async function PUT(
           endgamePlacement = parsedPlacement;
         }
 
-        const eliminated = !!row.eliminated;
-        const survived = eliminated ? false : !!row.survived;
-
-        sanitizedResults.push({
+        parsedResults.push({
           castawayId: row.castawayId.trim(),
-          survived,
-          eliminated,
           individualImmunityWins,
           tribeImmunityWins,
           individualRewardWins,
@@ -543,12 +593,9 @@ export async function PUT(
           idolsPlayedSuccessfully,
           votesReceived,
           confessionalCount,
-          confessionalLeader: !!row.confessionalLeader,
           endgamePlacement,
         });
       }
-
-      const eliminatedRows = sanitizedResults.filter((r) => r.eliminated);
 
       if (normalizedTribals.length !== tribalCount) {
         return NextResponse.json(
@@ -558,12 +605,6 @@ export async function PUT(
       }
 
       if (!!body.isNonElimination) {
-        if (eliminatedRows.length > 0) {
-          return NextResponse.json(
-            { error: "Non-elimination weeks cannot have eliminated castaways." },
-            { status: 400 }
-          );
-        }
         if (normalizedTribals.some((tribal) => tribal.bootCastawayId != null)) {
           return NextResponse.json(
             { error: "Non-elimination weeks cannot have boot castaways in tribal rows." },
@@ -571,22 +612,6 @@ export async function PUT(
           );
         }
       } else {
-        if (eliminatedRows.length < 1) {
-          return NextResponse.json(
-            { error: "At least one castaway must be marked eliminated." },
-            { status: 400 }
-          );
-        }
-        if (eliminatedRows.length !== tribalCount) {
-          return NextResponse.json(
-            {
-              error:
-                "Number of eliminated castaways must match configured tribalCount for elimination weeks.",
-            },
-            { status: 400 }
-          );
-        }
-
         const bootSet = new Set<string>();
         for (let tribalIndex = 0; tribalIndex < normalizedTribals.length; tribalIndex += 1) {
           const tribal = normalizedTribals[tribalIndex];
@@ -615,16 +640,45 @@ export async function PUT(
             );
           }
           bootSet.add(tribal.bootCastawayId);
-          if (!eliminatedRows.some((row) => row.castawayId === tribal.bootCastawayId)) {
+          if (!castawayIdsInPayload.includes(tribal.bootCastawayId)) {
             return NextResponse.json(
               {
-                error: `Tribal ${tribalIndex + 1} boot castaway must match an eliminated row.`,
+                error: `Tribal ${tribalIndex + 1} boot castaway must be included in castaway outcomes.`,
               },
               { status: 400 }
             );
           }
         }
       }
+
+      const bootCastawayIdSet = new Set<string>(
+        body.isNonElimination
+          ? []
+          : normalizedTribals
+              .map((tribal) => tribal.bootCastawayId)
+              .filter((castawayId): castawayId is string => castawayId != null)
+      );
+
+      const sanitizedResults: Array<{
+        castawayId: string;
+        survived: boolean;
+        eliminated: boolean;
+        individualImmunityWins: number;
+        tribeImmunityWins: number;
+        individualRewardWins: number;
+        advantagesFound: number;
+        idolsPlayedSuccessfully: number;
+        votesReceived: number;
+        confessionalCount: number;
+        endgamePlacement: number | null;
+      }> = parsedResults.map((row) => {
+        const eliminated = bootCastawayIdSet.has(row.castawayId);
+        return {
+          ...row,
+          eliminated,
+          survived: !eliminated,
+        };
+      });
 
       const episode = await prisma.$transaction(async (tx) => {
         const episodeForWeek = await tx.episode.upsert({
@@ -688,10 +742,11 @@ export async function PUT(
             idolsPlayedSuccessfully: row.idolsPlayedSuccessfully,
             votesReceived: row.votesReceived,
             confessionalCount: row.confessionalCount,
-            confessionalLeader: row.confessionalLeader,
             endgamePlacement: row.endgamePlacement,
           })),
         });
+
+        await recalculateConfessionalLeaders(tx, league.id);
 
         await tx.survivorCastaway.updateMany({
           where: { leagueId: league.id },

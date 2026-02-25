@@ -110,6 +110,33 @@ function ordinal(index: number) {
   return `${index}th`;
 }
 
+function formatEasternTimestamp(value: string | Date) {
+  const parsed = typeof value === "string" ? new Date(value) : value;
+  if (Number.isNaN(parsed.getTime())) return null;
+  const formatted = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(parsed);
+  return `${formatted} ET`;
+}
+
+function formatLocalTimestamp(value: string | Date) {
+  const parsed = typeof value === "string" ? new Date(value) : value;
+  if (Number.isNaN(parsed.getTime())) return null;
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  }).format(parsed);
+}
+
 function parseInitialFinalPlacements(existing: ExistingPrediction): FinalPlacementState {
   const fallback: FinalPlacementState = {
     fourthPlaceCastawayId: "",
@@ -178,12 +205,14 @@ export default function SurvivorWeeklyPredictionForm(props: {
   );
 
   const submitted = !!existingPrediction;
-  const disabled = isPending || submitted || isLocked;
-  const lockAtText = useMemo(() => {
+  const disabled = isPending || isLocked;
+  const lockAtLocalText = useMemo(() => {
     if (!lockAtIso) return null;
-    const parsed = new Date(lockAtIso);
-    if (Number.isNaN(parsed.getTime())) return null;
-    return parsed.toLocaleString();
+    return formatLocalTimestamp(lockAtIso);
+  }, [lockAtIso]);
+  const lockAtEasternText = useMemo(() => {
+    if (!lockAtIso) return null;
+    return formatEasternTimestamp(lockAtIso);
   }, [lockAtIso]);
 
   function updateTribal(index: number, patch: Partial<TribalPredictionState>) {
@@ -275,7 +304,7 @@ export default function SurvivorWeeklyPredictionForm(props: {
         return;
       }
 
-      setMessage("Prediction submitted.");
+      setMessage("Prediction saved.");
       window.location.reload();
     });
   }
@@ -285,7 +314,7 @@ export default function SurvivorWeeklyPredictionForm(props: {
       <div className="text-sm">
         <div className="font-medium">Weekly predictions</div>
         <p className="mt-1 text-xs text-muted-foreground">
-          Submit once per week. Scoring is deterministic and capped at 35 points.
+          Submit and edit freely until lock. Lock is every Wednesday at 7:00 PM Eastern.
         </p>
       </div>
 
@@ -293,22 +322,27 @@ export default function SurvivorWeeklyPredictionForm(props: {
         Configured tribal sets this week: <span className="font-semibold">{tribals.length}</span>
       </div>
 
-      {lockAtText && (
+      {lockAtLocalText && (
         <div className="text-xs text-muted-foreground">
-          Lock time: <span className="font-medium">{lockAtText}</span>
+          Week closes: <span className="font-medium">{lockAtLocalText}</span>
+          {lockAtEasternText ? (
+            <span className="block">Eastern reference: {lockAtEasternText}</span>
+          ) : null}
         </div>
       )}
 
       {submitted && (
         <div className="rounded-md border bg-muted/30 p-2 text-xs">
-          Submitted at {new Date(existingPrediction.submittedAt).toLocaleString()}.
+          Last saved at{" "}
+          {formatEasternTimestamp(existingPrediction.submittedAt)}
+          .
           {existingPrediction.points != null && (
             <span> Scored points: {Number(existingPrediction.points).toFixed(2)}.</span>
           )}
         </div>
       )}
 
-      {!submitted && isLocked && (
+      {isLocked && (
         <div className="rounded-md border bg-muted/30 p-2 text-xs">
           Predictions are locked for this week.
         </div>
@@ -507,7 +541,7 @@ export default function SurvivorWeeklyPredictionForm(props: {
       </div>
 
       <Button type="button" onClick={submitPrediction} disabled={disabled} className="w-full">
-        {submitted ? "Prediction submitted" : "Submit prediction"}
+        {isLocked ? "Predictions locked" : submitted ? "Update prediction" : "Submit prediction"}
       </Button>
     </section>
   );

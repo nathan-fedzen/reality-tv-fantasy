@@ -345,8 +345,7 @@ export default async function WeekPage({
 
   const survivorPredictionLocked =
     league.showType === "SURVIVOR"
-      ? !!mySurvivorPrediction ||
-        !!survivorEpisode?.survivorMeta?.lockedAt ||
+      ? !!survivorEpisode?.survivorMeta?.lockedAt ||
         (survivorPredictionLockAt ? now >= survivorPredictionLockAt : false)
       : false;
   const survivorTribalCount =
@@ -428,44 +427,53 @@ export default async function WeekPage({
             </div>
           )}
           <div className="space-y-4">
-            <SurvivorWeeklyPredictionForm
-              leagueId={league.id}
-              week={weekNum}
-              castaways={castaways}
-              tribalCount={survivorTribalCount}
-              isFinaleWeek={isFinaleWeek}
-              finalPlacementOptions={finalPlacementOptions}
-              existingPrediction={
-                mySurvivorPrediction
-                  ? {
-                      id: mySurvivorPrediction.id,
-                      tribals: mySurvivorPrediction.tribals,
-                      finalPlacements: mySurvivorPrediction.finalPlacements,
-                      bootCastawayId: mySurvivorPrediction.bootCastawayId,
-                      secondaryBootCastawayId:
-                        mySurvivorPrediction.secondaryBootCastawayId,
-                      bootVoteCount: mySurvivorPrediction.bootVoteCount,
-                      secondaryBootVoteCount:
-                        mySurvivorPrediction.secondaryBootVoteCount,
-                      immunityWinnerCastawayId:
-                        mySurvivorPrediction.immunityWinnerCastawayId,
-                      secondaryImmunityWinnerCastawayId:
-                        mySurvivorPrediction.secondaryImmunityWinnerCastawayId,
-                      idolPlayed: mySurvivorPrediction.idolPlayed,
-                      safePickCastawayId: mySurvivorPrediction.safePickCastawayId,
-                      secondarySafePickCastawayId:
-                        mySurvivorPrediction.secondarySafePickCastawayId,
-                      submittedAt: mySurvivorPrediction.submittedAt.toISOString(),
-                      scoredAt: mySurvivorPrediction.scoredAt
-                        ? mySurvivorPrediction.scoredAt.toISOString()
-                        : null,
-                      points: Number(mySurvivorPrediction.points.toString()),
-                    }
-                  : null
-              }
-              lockAtIso={survivorPredictionLockAt?.toISOString() ?? null}
-              isLocked={survivorPredictionLocked}
-            />
+            {hasStarted ? (
+              <SurvivorWeeklyPredictionForm
+                leagueId={league.id}
+                week={weekNum}
+                castaways={castaways}
+                tribalCount={survivorTribalCount}
+                isFinaleWeek={isFinaleWeek}
+                finalPlacementOptions={finalPlacementOptions}
+                existingPrediction={
+                  mySurvivorPrediction
+                    ? {
+                        id: mySurvivorPrediction.id,
+                        tribals: mySurvivorPrediction.tribals,
+                        finalPlacements: mySurvivorPrediction.finalPlacements,
+                        bootCastawayId: mySurvivorPrediction.bootCastawayId,
+                        secondaryBootCastawayId:
+                          mySurvivorPrediction.secondaryBootCastawayId,
+                        bootVoteCount: mySurvivorPrediction.bootVoteCount,
+                        secondaryBootVoteCount:
+                          mySurvivorPrediction.secondaryBootVoteCount,
+                        immunityWinnerCastawayId:
+                          mySurvivorPrediction.immunityWinnerCastawayId,
+                        secondaryImmunityWinnerCastawayId:
+                          mySurvivorPrediction.secondaryImmunityWinnerCastawayId,
+                        idolPlayed: mySurvivorPrediction.idolPlayed,
+                        safePickCastawayId: mySurvivorPrediction.safePickCastawayId,
+                        secondarySafePickCastawayId:
+                          mySurvivorPrediction.secondarySafePickCastawayId,
+                        submittedAt: mySurvivorPrediction.submittedAt.toISOString(),
+                        scoredAt: mySurvivorPrediction.scoredAt
+                          ? mySurvivorPrediction.scoredAt.toISOString()
+                          : null,
+                        points: Number(mySurvivorPrediction.points.toString()),
+                      }
+                    : null
+                }
+                lockAtIso={survivorPredictionLockAt?.toISOString() ?? null}
+                isLocked={survivorPredictionLocked}
+              />
+            ) : (
+              <section className="space-y-2 rounded-md border p-3">
+                <div className="text-sm font-medium">Weekly predictions</div>
+                <p className="text-xs text-muted-foreground">
+                  Weekly submissions unlock when the league starts.
+                </p>
+              </section>
+            )}
             <SurvivorBootOrderLockInForm
               leagueId={league.id}
               isMergeOpen={bootOrderMergeOpen}

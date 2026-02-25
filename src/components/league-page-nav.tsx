@@ -6,6 +6,7 @@ type LeaguePageKey =
   | "leaderboard"
   | "picks"
   | "weeks"
+  | "survivors"
   | "guide"
   | "auction"
   | "commissioner-updates";
@@ -42,6 +43,12 @@ export default function LeaguePageNav({
   ];
 
   if (showType === "SURVIVOR") {
+    items.push({
+      key: "survivors",
+      href: `/leagues/${leagueId}/survivors`,
+      label: "Survivor Stats",
+      mobileLabel: "Survivors",
+    });
     items.push({
       key: "guide",
       href: `/leagues/${leagueId}/guide`,

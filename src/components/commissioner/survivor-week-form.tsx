@@ -30,8 +30,6 @@ type TribalMetaState = {
 
 type ExistingResult = {
   castawayId: string;
-  survived: boolean;
-  eliminated: boolean;
   individualImmunityWins: number;
   tribeImmunityWins: number;
   individualRewardWins: number;
@@ -39,14 +37,11 @@ type ExistingResult = {
   idolsPlayedSuccessfully: number;
   votesReceived: number;
   confessionalCount: number;
-  confessionalLeader: boolean;
   endgamePlacement: number | null;
 };
 
 type RowState = {
   castawayId: string;
-  survived: boolean;
-  eliminated: boolean;
   individualImmunityWins: number;
   tribeImmunityWins: number;
   individualRewardWins: number;
@@ -54,7 +49,6 @@ type RowState = {
   idolsPlayedSuccessfully: number;
   votesReceived: number;
   confessionalCount: number;
-  confessionalLeader: boolean;
   endgamePlacement: string;
 };
 
@@ -189,8 +183,6 @@ export default function SurvivorWeekForm(props: {
       const existing = resultByCastawayId.get(castaway.id);
       return {
         castawayId: castaway.id,
-        survived: existing?.survived ?? true,
-        eliminated: existing?.eliminated ?? false,
         individualImmunityWins: existing?.individualImmunityWins ?? 0,
         tribeImmunityWins: existing?.tribeImmunityWins ?? 0,
         individualRewardWins: existing?.individualRewardWins ?? 0,
@@ -198,7 +190,6 @@ export default function SurvivorWeekForm(props: {
         idolsPlayedSuccessfully: existing?.idolsPlayedSuccessfully ?? 0,
         votesReceived: existing?.votesReceived ?? 0,
         confessionalCount: existing?.confessionalCount ?? 0,
-        confessionalLeader: existing?.confessionalLeader ?? false,
         endgamePlacement:
           existing?.endgamePlacement != null ? String(existing.endgamePlacement) : "",
       };
@@ -208,14 +199,7 @@ export default function SurvivorWeekForm(props: {
   const [message, setMessage] = useState("");
 
   function updateRow(castawayId: string, patch: Partial<RowState>) {
-    setRows((prev) =>
-      prev.map((row) => {
-        if (row.castawayId !== castawayId) return row;
-        const next = { ...row, ...patch };
-        if (next.eliminated) next.survived = false;
-        return next;
-      })
-    );
+    setRows((prev) => prev.map((row) => (row.castawayId !== castawayId ? row : { ...row, ...patch })));
   }
 
   function setConfiguredTribalCount(nextValue: number) {
@@ -241,6 +225,18 @@ export default function SurvivorWeekForm(props: {
       )
     );
   }
+
+  const bootedCastawayIds = useMemo(
+    () =>
+      new Set<string>(
+        isNonElimination
+          ? []
+          : tribals
+              .map((tribal) => tribal.bootCastawayId.trim())
+              .filter((castawayId) => castawayId.length > 0)
+      ),
+    [isNonElimination, tribals]
+  );
 
   async function save(mode: "save" | "recompute" | "configure") {
     setMessage("");
@@ -274,8 +270,6 @@ export default function SurvivorWeekForm(props: {
           })),
           results: rows.map((row) => ({
             castawayId: row.castawayId,
-            survived: row.survived,
-            eliminated: row.eliminated,
             individualImmunityWins: Number(row.individualImmunityWins),
             tribeImmunityWins: Number(row.tribeImmunityWins),
             individualRewardWins: Number(row.individualRewardWins),
@@ -283,7 +277,6 @@ export default function SurvivorWeekForm(props: {
             idolsPlayedSuccessfully: Number(row.idolsPlayedSuccessfully),
             votesReceived: Number(row.votesReceived),
             confessionalCount: Number(row.confessionalCount),
-            confessionalLeader: row.confessionalLeader,
             endgamePlacement: row.endgamePlacement ? Number(row.endgamePlacement) : null,
           })),
         };
@@ -459,15 +452,17 @@ export default function SurvivorWeekForm(props: {
         <div className="text-sm font-medium">Castaway outcomes</div>
         <p className="text-xs text-muted-foreground">
           Enter weekly outcomes for each castaway. Endgame placement is optional and usually
-          finale-only.
+          finale-only. Confessional leader points are calculated automatically from cumulative
+          totals. Elimination is derived from the boot castaways selected above.
         </p>
 
         <div className="space-y-4">
           {rows.map((row) => {
             const castaway = castaways.find((c) => c.id === row.castawayId);
-            const tone = row.eliminated
+            const eliminatedFromBoot = bootedCastawayIds.has(row.castawayId);
+            const tone = eliminatedFromBoot
               ? "border-destructive/45 bg-gradient-to-br from-background via-background to-destructive/8"
-              : row.confessionalLeader
+              : row.confessionalCount > 0
                 ? "border-primary/40 bg-gradient-to-br from-background via-background to-primary/12"
                 : "border-border/70 bg-gradient-to-br from-background via-background to-secondary/12";
 
@@ -487,68 +482,13 @@ export default function SurvivorWeekForm(props: {
                   </div>
                   <span
                     className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${
-                      row.eliminated
+                      eliminatedFromBoot
                         ? "bg-destructive/10 text-destructive ring-destructive/30"
                         : "bg-emerald-500/12 text-emerald-600 ring-emerald-500/30 dark:text-emerald-300"
                     }`}
                   >
-                    {row.eliminated ? "Eliminated" : "Active"}
+                    {eliminatedFromBoot ? "Eliminated (Boot)" : "Active"}
                   </span>
-                </div>
-
-                <div className="grid gap-2 md:grid-cols-3">
-                  <label
-                    className={`flex min-h-12 items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition ${
-                      row.survived
-                        ? "border-emerald-400/45 bg-emerald-500/12"
-                        : "border-border/70 bg-background/70"
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={row.survived}
-                      onChange={(e) => updateRow(row.castawayId, { survived: e.target.checked })}
-                      disabled={disabled || isPending || row.eliminated}
-                    />
-                    <span className="leading-tight">Survived</span>
-                  </label>
-                  <label
-                    className={`flex min-h-12 items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition ${
-                      row.eliminated
-                        ? "border-destructive/45 bg-destructive/12"
-                        : "border-border/70 bg-background/70"
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={row.eliminated}
-                      onChange={(e) =>
-                        updateRow(row.castawayId, {
-                          eliminated: e.target.checked,
-                          survived: !e.target.checked,
-                        })
-                      }
-                      disabled={disabled || isPending}
-                    />
-                    <span className="leading-tight">Eliminated</span>
-                  </label>
-                  <label
-                    className={`flex min-h-12 items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition ${
-                      row.confessionalLeader
-                        ? "border-primary/45 bg-primary/14"
-                        : "border-border/70 bg-background/70"
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={row.confessionalLeader}
-                      onChange={(e) =>
-                        updateRow(row.castawayId, { confessionalLeader: e.target.checked })
-                      }
-                      disabled={disabled || isPending}
-                    />
-                    <span className="leading-tight">Confessional leader</span>
-                  </label>
                 </div>
 
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
