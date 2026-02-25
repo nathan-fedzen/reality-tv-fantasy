@@ -176,7 +176,14 @@ export default function LeagueChatBubble(props: {
       <button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
-        className="fixed z-40 flex h-14 w-14 items-center justify-center rounded-full border border-primary/40 bg-primary/20 text-primary shadow-lg backdrop-blur-sm transition hover:bg-primary/30 right-[max(1rem,env(safe-area-inset-right))] bottom-[max(1.5rem,calc(env(safe-area-inset-bottom)+0.5rem))]"
+        className={[
+          "fixed z-40 flex h-16 w-16 items-center justify-center rounded-full border backdrop-blur-md transition",
+          "right-[max(1rem,env(safe-area-inset-right))] bottom-[max(3.25rem,calc(env(safe-area-inset-bottom)+1.5rem))]",
+          "ring-2 ring-background/90 shadow-xl",
+          isOpen
+            ? "border-primary/70 bg-primary/90 text-primary-foreground shadow-primary/35"
+            : "border-primary/65 bg-primary text-primary-foreground shadow-primary/45 hover:-translate-y-0.5 hover:scale-[1.04] hover:bg-primary/95 active:scale-[0.98]",
+        ].join(" ")}
         aria-expanded={isOpen}
         aria-label={toggleLabel}
       >
@@ -194,11 +201,11 @@ export default function LeagueChatBubble(props: {
         >
           <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
         </svg>
-        <span className="absolute left-1/2 top-full mt-1 -translate-x-1/2 whitespace-nowrap text-[11px] font-semibold leading-none tracking-wide">
-          Chat
+        <span className="absolute left-1/2 top-full mt-2 -translate-x-1/2 whitespace-nowrap rounded-full border border-border bg-card/95 px-2.5 py-1 text-[11px] font-bold leading-none tracking-wide text-foreground shadow-md backdrop-blur">
+          League Chat
         </span>
         {!isOpen && unreadCount > 0 && (
-          <span className="absolute -right-1 -top-1 inline-flex min-h-6 min-w-6 items-center justify-center rounded-full bg-amber-300 px-1.5 text-[11px] font-extrabold leading-none text-slate-950 ring-2 ring-background shadow-md">
+          <span className="absolute -right-1 -top-1 inline-flex min-h-6 min-w-6 items-center justify-center rounded-full border border-amber-100/70 bg-amber-300 px-1.5 text-[11px] font-extrabold leading-none text-slate-950 ring-2 ring-background shadow-md">
             {unreadCount > 99 ? "99+" : unreadCount}
           </span>
         )}

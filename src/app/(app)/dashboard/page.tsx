@@ -56,8 +56,8 @@ export default async function DashboardPage() {
   }));
 
   return (
-    <main className="relative min-h-[calc(100vh-56px)] overflow-hidden bg-background">
-      <div className="pointer-events-none absolute inset-0">
+    <main className="relative min-h-[calc(100vh-56px)] bg-background">
+      <div className="pointer-events-none fixed inset-x-0 bottom-0 top-[56px]">
         <Aurora
           colorStops={["#7cff67", "#B19EEF", "#5227FF"]}
           blend={0.5}
@@ -65,7 +65,7 @@ export default async function DashboardPage() {
           speed={1}
         />
       </div>
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-background/70 via-background/85 to-background/75" />
+      <div className="pointer-events-none fixed inset-x-0 bottom-0 top-[56px] bg-gradient-to-br from-background/70 via-background/85 to-background/75" />
       <div className="relative z-10 mx-auto w-full max-w-5xl px-4 py-8 pb-12 sm:px-6">
         {/* Top row */}
         <div className="flex items-start justify-between gap-3">
