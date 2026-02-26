@@ -3,6 +3,10 @@ import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import LeaguePageNav from "@/components/league-page-nav";
 import SurvivorVisualBoard from "@/components/survivor/survivor-visual-board";
+import {
+  SURVIVOR_V1_RULES,
+  survivorEndgamePlacementPoints,
+} from "@/lib/survivor/survivor-rules";
 
 type CastawaySummary = {
   id: string;
@@ -22,7 +26,22 @@ type CastawaySummary = {
   eliminatedWeek: number | null;
   endgamePlacement: number | null;
   lastUpdatedWeek: number | null;
+  fantasyPointsTotal: number;
+  fantasyPointsSurvived: number;
+  fantasyPointsEliminated: number;
+  fantasyPointsIndividualImmunity: number;
+  fantasyPointsTribeImmunity: number;
+  fantasyPointsReward: number;
+  fantasyPointsConfessionals: number;
+  fantasyPointsAdvantageFind: number;
+  fantasyPointsIdolPlay: number;
+  fantasyPointsConfessionalLeader: number;
+  fantasyPointsEndgamePlacement: number;
 };
+
+function formatPoints(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
 
 export default async function SurvivorStatsPage({
   params,
@@ -85,6 +104,7 @@ export default async function SurvivorStatsPage({
     where: { leagueId: league.id },
     select: {
       castawayId: true,
+      survived: true,
       eliminated: true,
       individualImmunityWins: true,
       tribeImmunityWins: true,
@@ -122,6 +142,17 @@ export default async function SurvivorStatsPage({
         eliminatedWeek: null,
         endgamePlacement: null,
         lastUpdatedWeek: null,
+        fantasyPointsTotal: 0,
+        fantasyPointsSurvived: 0,
+        fantasyPointsEliminated: 0,
+        fantasyPointsIndividualImmunity: 0,
+        fantasyPointsTribeImmunity: 0,
+        fantasyPointsReward: 0,
+        fantasyPointsConfessionals: 0,
+        fantasyPointsAdvantageFind: 0,
+        fantasyPointsIdolPlay: 0,
+        fantasyPointsConfessionalLeader: 0,
+        fantasyPointsEndgamePlacement: 0,
       },
     ])
   );
@@ -141,6 +172,46 @@ export default async function SurvivorStatsPage({
     summary.idolsPlayedTotal += row.idolsPlayedSuccessfully;
     summary.idolNet += row.advantagesFound - row.idolsPlayedSuccessfully;
     summary.confessionalLeaderWeeks += row.confessionalLeader ? 1 : 0;
+    const pointsSurvived =
+      row.survived && !row.eliminated ? SURVIVOR_V1_RULES.performance.survived : 0;
+    const pointsEliminated = row.eliminated ? SURVIVOR_V1_RULES.performance.eliminated : 0;
+    const pointsIndividualImmunity =
+      row.individualImmunityWins * SURVIVOR_V1_RULES.performance.individualImmunityWin;
+    const pointsTribeImmunity =
+      row.tribeImmunityWins * SURVIVOR_V1_RULES.performance.tribeImmunityWin;
+    const pointsReward =
+      row.individualRewardWins * SURVIVOR_V1_RULES.performance.individualRewardWin;
+    const pointsConfessionals =
+      row.confessionalCount * SURVIVOR_V1_RULES.performance.confessionalPer;
+    const pointsAdvantageFind = row.advantagesFound * SURVIVOR_V1_RULES.performance.idolFind;
+    const pointsIdolPlay =
+      row.idolsPlayedSuccessfully * SURVIVOR_V1_RULES.performance.idolPlaySuccessful;
+    const pointsConfessionalLeader = row.confessionalLeader
+      ? SURVIVOR_V1_RULES.performance.confessionalLeader
+      : 0;
+    const pointsEndgamePlacement = survivorEndgamePlacementPoints(row.endgamePlacement);
+
+    summary.fantasyPointsSurvived += pointsSurvived;
+    summary.fantasyPointsEliminated += pointsEliminated;
+    summary.fantasyPointsIndividualImmunity += pointsIndividualImmunity;
+    summary.fantasyPointsTribeImmunity += pointsTribeImmunity;
+    summary.fantasyPointsReward += pointsReward;
+    summary.fantasyPointsConfessionals += pointsConfessionals;
+    summary.fantasyPointsAdvantageFind += pointsAdvantageFind;
+    summary.fantasyPointsIdolPlay += pointsIdolPlay;
+    summary.fantasyPointsConfessionalLeader += pointsConfessionalLeader;
+    summary.fantasyPointsEndgamePlacement += pointsEndgamePlacement;
+    summary.fantasyPointsTotal +=
+      pointsSurvived +
+      pointsEliminated +
+      pointsIndividualImmunity +
+      pointsTribeImmunity +
+      pointsReward +
+      pointsConfessionals +
+      pointsAdvantageFind +
+      pointsIdolPlay +
+      pointsConfessionalLeader +
+      pointsEndgamePlacement;
 
     if (row.eliminated) {
       summary.eliminated = true;
@@ -277,130 +348,89 @@ export default async function SurvivorStatsPage({
               No castaways are seeded yet for this league.
             </p>
           ) : (
-            <>
-              <div className="mt-4 grid grid-cols-1 gap-2 md:hidden">
-                {rankedSurvivors.map((survivor) => (
-                  <article
-                    key={survivor.id}
-                    className={[
-                      "rounded-2xl border px-3 py-3",
-                      survivor.eliminated
-                        ? "border-border bg-background/45 opacity-65 grayscale"
-                        : "border-border bg-background/70",
-                    ].join(" ")}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p
-                          className={[
-                            "text-sm font-semibold",
-                            survivor.eliminated ? "line-through" : "",
-                          ].join(" ")}
-                        >
-                          #{survivor.confessionalRank} {survivor.name}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {survivor.tribe ?? "Unassigned"} |{" "}
-                          {survivor.eliminated
-                            ? `Eliminated${survivor.eliminatedWeek ? ` W${survivor.eliminatedWeek}` : ""}`
-                            : "Active"}
-                        </p>
-                      </div>
-                      <span className="rounded-full border border-border bg-card px-2 py-0.5 text-[11px] font-semibold">
-                        {survivor.confessionalTotal} conf
-                      </span>
-                    </div>
-                    <div className="mt-2 grid grid-cols-2 gap-1 text-xs text-muted-foreground">
-                      <span>Votes: {survivor.votesReceivedTotal}</span>
-                      <span>Ind imm: {survivor.individualImmunityTotal}</span>
-                      <span>Tribe imm: {survivor.tribeImmunityTotal}</span>
-                      <span>Reward: {survivor.rewardTotal}</span>
-                      <span>Found: {survivor.advantagesFoundTotal}</span>
-                      <span>Played: {survivor.idolsPlayedTotal}</span>
-                    </div>
-                  </article>
-                ))}
-              </div>
-
-              <div className="mt-4 hidden overflow-x-auto md:block">
-                <table className="w-full min-w-[980px] text-sm">
-                  <thead>
-                    <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
-                      <th className="px-3 py-2">Rank</th>
-                      <th className="px-3 py-2">Survivor</th>
-                      <th className="px-3 py-2">Status</th>
-                      <th className="px-3 py-2">Confessionals</th>
-                      <th className="px-3 py-2">Votes Recv.</th>
-                      <th className="px-3 py-2">Immunity (Ind/Tribe)</th>
-                      <th className="px-3 py-2">Reward</th>
-                      <th className="px-3 py-2">Found / Played</th>
-                      <th className="px-3 py-2">Idol Net</th>
-                      <th className="px-3 py-2">Leader Weeks</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {rankedSurvivors.map((survivor) => (
-                      <tr
-                        key={survivor.id}
+            <div className="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-2">
+              {rankedSurvivors.map((survivor) => (
+                <article
+                  key={survivor.id}
+                  className={[
+                    "rounded-2xl border px-4 py-3",
+                    survivor.eliminated
+                      ? "border-border bg-background/45 opacity-75"
+                      : "border-border bg-background/70",
+                  ].join(" ")}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p
                         className={[
-                          survivor.eliminated ? "bg-background/35 text-muted-foreground" : "",
+                          "text-sm font-semibold",
+                          survivor.eliminated ? "line-through" : "",
                         ].join(" ")}
                       >
-                        <td className="px-3 py-2 font-semibold">#{survivor.confessionalRank}</td>
-                        <td className="px-3 py-2">
-                          <div
-                            className={[
-                              "font-semibold",
-                              survivor.eliminated ? "line-through opacity-80" : "",
-                            ].join(" ")}
-                          >
-                            {survivor.name}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {survivor.tribe ?? "Unassigned"}
-                          </div>
-                        </td>
-                        <td className="px-3 py-2">
-                          {survivor.eliminated ? (
-                            <span className="rounded-full border border-destructive/30 bg-destructive/10 px-2 py-0.5 text-xs font-semibold text-destructive">
-                              OUT{survivor.eliminatedWeek ? ` (W${survivor.eliminatedWeek})` : ""}
-                            </span>
-                          ) : (
-                            <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs font-semibold text-emerald-300">
-                              Active
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2 font-semibold tabular-nums">
-                          {survivor.confessionalTotal}
-                        </td>
-                        <td className="px-3 py-2 tabular-nums">{survivor.votesReceivedTotal}</td>
-                        <td className="px-3 py-2 tabular-nums">
-                          {survivor.individualImmunityTotal} / {survivor.tribeImmunityTotal}
-                        </td>
-                        <td className="px-3 py-2 tabular-nums">{survivor.rewardTotal}</td>
-                        <td className="px-3 py-2 tabular-nums">
-                          {survivor.advantagesFoundTotal} / {survivor.idolsPlayedTotal}
-                        </td>
-                        <td className="px-3 py-2">
-                          <span
-                            className={[
-                              "rounded-full px-2 py-0.5 text-xs font-semibold",
-                              survivor.idolNet > 0
-                                ? "border border-amber-500/30 bg-amber-500/15 text-amber-200"
-                                : "border border-border bg-background text-muted-foreground",
-                            ].join(" ")}
-                          >
-                            {survivor.idolNet > 0 ? `+${survivor.idolNet}` : survivor.idolNet}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 tabular-nums">{survivor.confessionalLeaderWeeks}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </>
+                        #{survivor.confessionalRank} {survivor.name}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {survivor.tribe ?? "Unassigned"} |{" "}
+                        {survivor.eliminated
+                          ? `Eliminated${survivor.eliminatedWeek ? ` W${survivor.eliminatedWeek}` : ""}`
+                          : "Active"}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Season fantasy points
+                      </p>
+                      <p className="text-base font-semibold tabular-nums">
+                        {formatPoints(survivor.fantasyPointsTotal)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-2 gap-1.5 text-xs text-muted-foreground sm:grid-cols-3">
+                    <span>Conf: {survivor.confessionalTotal}</span>
+                    <span>Votes: {survivor.votesReceivedTotal}</span>
+                    <span>
+                      Imm: {survivor.individualImmunityTotal + survivor.tribeImmunityTotal}
+                    </span>
+                    <span>Reward: {survivor.rewardTotal}</span>
+                    <span>
+                      Found/Played: {survivor.advantagesFoundTotal}/{survivor.idolsPlayedTotal}
+                    </span>
+                    <span>Leader weeks: {survivor.confessionalLeaderWeeks}</span>
+                  </div>
+
+                  <details className="mt-3 rounded-xl border border-border/70 bg-card/60 px-3 py-2">
+                    <summary className="cursor-pointer text-xs font-semibold">
+                      Scoring breakdown (season)
+                    </summary>
+                    <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                      <span>Survived: {formatPoints(survivor.fantasyPointsSurvived)}</span>
+                      <span>Eliminated: {formatPoints(survivor.fantasyPointsEliminated)}</span>
+                      <span>
+                        Ind immunity: {formatPoints(survivor.fantasyPointsIndividualImmunity)}
+                      </span>
+                      <span>
+                        Tribe immunity: {formatPoints(survivor.fantasyPointsTribeImmunity)}
+                      </span>
+                      <span>Reward wins: {formatPoints(survivor.fantasyPointsReward)}</span>
+                      <span>
+                        Confessionals: {formatPoints(survivor.fantasyPointsConfessionals)}
+                      </span>
+                      <span>
+                        Advantage finds: {formatPoints(survivor.fantasyPointsAdvantageFind)}
+                      </span>
+                      <span>Idol plays: {formatPoints(survivor.fantasyPointsIdolPlay)}</span>
+                      <span>
+                        Confessional leader: {formatPoints(survivor.fantasyPointsConfessionalLeader)}
+                      </span>
+                      <span>
+                        Endgame placement: {formatPoints(survivor.fantasyPointsEndgamePlacement)}
+                      </span>
+                    </div>
+                  </details>
+                </article>
+              ))}
+            </div>
           )}
         </section>
       </div>
