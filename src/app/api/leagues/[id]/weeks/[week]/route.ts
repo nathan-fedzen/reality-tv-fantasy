@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
+import { Prisma, ShowType } from "@prisma/client";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { recomputeDragRaceWeekScores } from "@/lib/scoring/drag-race";
 import { recomputeSurvivorWeekScores } from "@/lib/scoring/survivor";
 import { SURVIVOR_SEASON_WEEKS } from "@/lib/survivor/season";
+import { sendWebPushToUsers } from "@/lib/notifications/web-push";
 
 type DragRaceWeekPayload = {
   miniWinners: string[];
@@ -26,6 +27,7 @@ type SurvivorCastawayResultPayload = {
 };
 
 type SurvivorTribalMetaPayload = {
+  eliminationType?: "VOTE" | "MEDEVAC" | string | null;
   bootCastawayId?: string | null;
   bootVoteCount?: number | null;
   immunityWinnerCastawayId?: string | null;
@@ -51,6 +53,7 @@ type SurvivorWeekPayload = {
 };
 
 type NormalizedSurvivorTribalMeta = {
+  eliminationType: "VOTE" | "MEDEVAC";
   bootCastawayId: string | null;
   bootVoteCount: number | null;
   immunityType: "INDIVIDUAL" | "TRIBE";
@@ -80,24 +83,45 @@ function cleanStringArray(values: unknown): string[] {
 
 function normalizeTribalResults(body: SurvivorWeekPayload) {
   if (Array.isArray(body.tribals) && body.tribals.length > 0) {
-    return body.tribals.map((tribal) => ({
-      bootCastawayId: cleanId(tribal.bootCastawayId) || null,
-      bootVoteCount:
-        tribal.bootVoteCount == null ? null : parseNonNegativeInt(tribal.bootVoteCount),
-      immunityType:
-        tribal.immunityType === "TRIBE" ? ("TRIBE" as const) : ("INDIVIDUAL" as const),
-      immunityWinnerCastawayIds: (() => {
+    return body.tribals.map((tribal) => {
+      const eliminationType =
+        tribal.eliminationType === "MEDEVAC" ? ("MEDEVAC" as const) : ("VOTE" as const);
+      const immunityWinnerCastawayIds = (() => {
         const winnerIds = cleanStringArray(tribal.immunityWinnerCastawayIds);
         if (winnerIds.length > 0) return winnerIds;
         const single = cleanId(tribal.immunityWinnerCastawayId);
         return single ? [single] : [];
-      })(),
-      immunityWinningTribes: cleanStringArray(tribal.immunityWinningTribes),
-      immunityWinnerCastawayId: cleanId(tribal.immunityWinnerCastawayId) || null,
-    }));
+      })();
+
+      const normalized: NormalizedSurvivorTribalMeta = {
+        eliminationType,
+        bootCastawayId: cleanId(tribal.bootCastawayId) || null,
+        bootVoteCount:
+          tribal.bootVoteCount == null ? null : parseNonNegativeInt(tribal.bootVoteCount),
+        immunityType:
+          tribal.immunityType === "TRIBE" ? ("TRIBE" as const) : ("INDIVIDUAL" as const),
+        immunityWinnerCastawayIds,
+        immunityWinningTribes: cleanStringArray(tribal.immunityWinningTribes),
+        immunityWinnerCastawayId: cleanId(tribal.immunityWinnerCastawayId) || null,
+      };
+
+      if (eliminationType === "MEDEVAC") {
+        return {
+          ...normalized,
+          bootVoteCount: null,
+          immunityType: "INDIVIDUAL" as const,
+          immunityWinnerCastawayIds: [],
+          immunityWinningTribes: [],
+          immunityWinnerCastawayId: null,
+        };
+      }
+
+      return normalized;
+    });
   }
 
   const first: NormalizedSurvivorTribalMeta = {
+    eliminationType: "VOTE",
     bootCastawayId: cleanId(body.bootCastawayId) || null,
     bootVoteCount: body.bootVoteCount == null ? null : parseNonNegativeInt(body.bootVoteCount),
     immunityType: "INDIVIDUAL",
@@ -108,6 +132,7 @@ function normalizeTribalResults(body: SurvivorWeekPayload) {
     immunityWinnerCastawayId: cleanId(body.immunityWinnerCastawayId) || null,
   };
   const second: NormalizedSurvivorTribalMeta = {
+    eliminationType: "VOTE",
     bootCastawayId: cleanId(body.secondaryBootCastawayId) || null,
     bootVoteCount:
       body.secondaryBootVoteCount == null
@@ -133,6 +158,270 @@ function normalizeTribalResults(body: SurvivorWeekPayload) {
   }
 
   return out;
+}
+
+type RankSnapshot = {
+  rankByUserId: Map<string, number>;
+};
+
+const WEEK_RESULTS_NOTIFICATION_KIND = "WEEK_RESULTS_POSTED";
+
+function toNumber(value: Prisma.Decimal | null | undefined) {
+  if (value == null) return 0;
+  return Number(value.toString());
+}
+
+function predictedBootCastawayIds(input: {
+  tribals: Prisma.JsonValue | null;
+  bootCastawayId: string | null;
+  secondaryBootCastawayId: string | null;
+}) {
+  const fromTribals = new Set<string>();
+  if (Array.isArray(input.tribals)) {
+    for (const row of input.tribals) {
+      if (!row || typeof row !== "object" || Array.isArray(row)) continue;
+      const castawayId = (row as Record<string, unknown>).bootCastawayId;
+      if (typeof castawayId !== "string") continue;
+      const trimmed = castawayId.trim();
+      if (trimmed) fromTribals.add(trimmed);
+    }
+  }
+
+  if (fromTribals.size > 0) return Array.from(fromTribals);
+
+  return Array.from(
+    new Set(
+      [input.bootCastawayId, input.secondaryBootCastawayId]
+        .filter((value): value is string => !!value)
+        .map((value) => value.trim())
+        .filter(Boolean)
+    )
+  );
+}
+
+function countCorrectEliminationPredictions(
+  predictions: Array<{
+    leagueEntryId: string;
+    tribals: Prisma.JsonValue | null;
+    bootCastawayId: string | null;
+    secondaryBootCastawayId: string | null;
+    episode: {
+      survivorCastawayResults: Array<{ castawayId: string }>;
+    };
+  }>
+) {
+  const result = new Map<string, number>();
+
+  for (const prediction of predictions) {
+    const predictedBoots = predictedBootCastawayIds({
+      tribals: prediction.tribals,
+      bootCastawayId: prediction.bootCastawayId,
+      secondaryBootCastawayId: prediction.secondaryBootCastawayId,
+    });
+    if (predictedBoots.length === 0) continue;
+
+    const actualBoots = new Set(
+      prediction.episode.survivorCastawayResults.map((row) => row.castawayId)
+    );
+    const hits = predictedBoots.filter((castawayId) => actualBoots.has(castawayId)).length;
+    if (hits === 0) continue;
+
+    result.set(
+      prediction.leagueEntryId,
+      (result.get(prediction.leagueEntryId) ?? 0) + hits
+    );
+  }
+
+  return result;
+}
+
+async function computeLeagueRankSnapshot(
+  tx: Prisma.TransactionClient,
+  leagueId: string,
+  showType: ShowType
+) {
+  const entries = await tx.leagueEntry.findMany({
+    where: { leagueId },
+    select: {
+      id: true,
+      userId: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: "asc" },
+  });
+
+  const totals = await tx.leagueEntryScore.groupBy({
+    by: ["leagueEntryId"],
+    where: {
+      leagueEntry: { leagueId },
+    },
+    _sum: { points: true },
+  });
+  const totalByEntryId = new Map(
+    totals.map((row) => [row.leagueEntryId, toNumber(row._sum.points)])
+  );
+
+  const correctPredictionsByEntryId =
+    showType === "SURVIVOR"
+      ? countCorrectEliminationPredictions(
+          await tx.survivorWeeklyPrediction.findMany({
+            where: { leagueId },
+            select: {
+              leagueEntryId: true,
+              tribals: true,
+              bootCastawayId: true,
+              secondaryBootCastawayId: true,
+              episode: {
+                select: {
+                  survivorCastawayResults: {
+                    where: { eliminated: true },
+                    select: { castawayId: true },
+                  },
+                },
+              },
+            },
+          })
+        )
+      : new Map<string, number>();
+
+  const rows = entries.map((entry) => ({
+    entryId: entry.id,
+    userId: entry.userId,
+    createdAt: entry.createdAt,
+    points: totalByEntryId.get(entry.id) ?? 0,
+    correctPredictions: correctPredictionsByEntryId.get(entry.id) ?? 0,
+  }));
+
+  rows.sort((a, b) => {
+    if (b.points !== a.points) return b.points - a.points;
+    if (showType === "SURVIVOR" && b.correctPredictions !== a.correctPredictions) {
+      return b.correctPredictions - a.correctPredictions;
+    }
+    return a.createdAt.getTime() - b.createdAt.getTime();
+  });
+
+  let rank = 0;
+  let lastPoints: number | null = null;
+  let lastCorrectPredictions: number | null = null;
+  const rankByUserId = new Map<string, number>();
+
+  rows.forEach((row, index) => {
+    if (
+      lastPoints === null ||
+      row.points !== lastPoints ||
+      (showType === "SURVIVOR" && row.correctPredictions !== lastCorrectPredictions)
+    ) {
+      rank = index + 1;
+      lastPoints = row.points;
+      lastCorrectPredictions = row.correctPredictions;
+    }
+    rankByUserId.set(row.userId, rank);
+  });
+
+  return {
+    rankByUserId,
+  };
+}
+
+function buildWeekResultsNotificationBody(input: {
+  week: number;
+  beforeRank: number | null;
+  afterRank: number | null;
+}) {
+  const parts = [`Week ${input.week} results are posted.`];
+
+  if (input.afterRank == null) {
+    parts.push("Check the leaderboard for updated standings.");
+    return parts.join(" ");
+  }
+
+  if (input.beforeRank == null) {
+    parts.push(`You are now #${input.afterRank} on the leaderboard.`);
+  } else if (input.afterRank < input.beforeRank) {
+    parts.push(`You moved up ${input.beforeRank - input.afterRank} spot(s) to #${input.afterRank}.`);
+  } else if (input.afterRank > input.beforeRank) {
+    parts.push(`You moved down ${input.afterRank - input.beforeRank} spot(s) to #${input.afterRank}.`);
+  } else {
+    parts.push(`You stayed at #${input.afterRank}.`);
+  }
+
+  if (input.afterRank === 1 && input.beforeRank !== 1) {
+    parts.push("You moved into 1st place.");
+  }
+
+  return parts.join(" ");
+}
+
+async function sendWeekResultsPostedNotifications(input: {
+  leagueId: string;
+  leagueName: string;
+  week: number;
+  showType: ShowType;
+  beforeSnapshot: RankSnapshot;
+  afterSnapshot: RankSnapshot;
+}) {
+  const members = await prisma.leagueMember.findMany({
+    where: { leagueId: input.leagueId },
+    select: { userId: true },
+  });
+  const userIds = Array.from(new Set(members.map((member) => member.userId)));
+  if (userIds.length === 0) return;
+
+  const dedupeByUserId = new Map(
+    userIds.map((userId) => [
+      userId,
+      `week-results:${input.showType.toLowerCase()}:${input.leagueId}:week-${input.week}:${userId}`,
+    ])
+  );
+  const existing = await prisma.notificationDelivery.findMany({
+    where: { dedupeKey: { in: Array.from(dedupeByUserId.values()) } },
+    select: { dedupeKey: true },
+  });
+  const sentKeys = new Set(existing.map((row) => row.dedupeKey));
+
+  const deliveries: Array<{ userId: string; dedupeKey: string }> = [];
+  const title = `${input.leagueName}: Week ${input.week} results posted`;
+  const tag = `week-results-${input.leagueId}-w${input.week}`;
+  const url = `/leagues/${input.leagueId}/leaderboard`;
+
+  await Promise.all(
+    userIds.map(async (userId) => {
+      const dedupeKey = dedupeByUserId.get(userId);
+      if (!dedupeKey || sentKeys.has(dedupeKey)) return;
+
+      const beforeRank = input.beforeSnapshot.rankByUserId.get(userId) ?? null;
+      const afterRank = input.afterSnapshot.rankByUserId.get(userId) ?? null;
+      const body = buildWeekResultsNotificationBody({
+        week: input.week,
+        beforeRank,
+        afterRank,
+      });
+
+      const pushResult = await sendWebPushToUsers({
+        userIds: [userId],
+        payload: {
+          title,
+          body,
+          url,
+          tag,
+        },
+      });
+      if (pushResult.deliveredUserIds.includes(userId)) {
+        deliveries.push({ userId, dedupeKey });
+      }
+    })
+  );
+
+  if (deliveries.length > 0) {
+    await prisma.notificationDelivery.createMany({
+      data: deliveries.map((delivery) => ({
+        userId: delivery.userId,
+        kind: WEEK_RESULTS_NOTIFICATION_KIND,
+        dedupeKey: delivery.dedupeKey,
+      })),
+      skipDuplicates: true,
+    });
+  }
 }
 
 async function recalculateConfessionalLeaders(
@@ -444,6 +733,7 @@ export async function PUT(
       where: { id },
       select: {
         id: true,
+        name: true,
         showType: true,
         seasonKey: true,
         createdById: true,
@@ -512,7 +802,8 @@ export async function PUT(
         { type: "elimination", queenId: body.eliminatedQueenId },
       ];
 
-      const episode = await prisma.$transaction(async (tx) => {
+      const savedWeek = await prisma.$transaction(async (tx) => {
+        const beforeSnapshot = await computeLeagueRankSnapshot(tx, league.id, league.showType);
         const upserted = await tx.episode.upsert({
           where: { leagueId_week: { leagueId: league.id, week: weekNum } },
           create: { leagueId: league.id, week: weekNum },
@@ -530,10 +821,24 @@ export async function PUT(
         });
 
         await recomputeDragRaceWeekScores(tx, league.id, upserted.id);
-        return upserted;
+        const afterSnapshot = await computeLeagueRankSnapshot(tx, league.id, league.showType);
+        return { episodeId: upserted.id, beforeSnapshot, afterSnapshot };
       });
 
-      return NextResponse.json({ ok: true, episodeId: episode.id });
+      try {
+        await sendWeekResultsPostedNotifications({
+          leagueId: league.id,
+          leagueName: league.name,
+          week: weekNum,
+          showType: league.showType,
+          beforeSnapshot: savedWeek.beforeSnapshot,
+          afterSnapshot: savedWeek.afterSnapshot,
+        });
+      } catch {
+        // Keep weekly result submission resilient if push delivery fails.
+      }
+
+      return NextResponse.json({ ok: true, episodeId: savedWeek.episodeId });
     }
 
     if (league.showType === "SURVIVOR") {
@@ -596,6 +901,7 @@ export async function PUT(
           normalizedTribals.length > 0
             ? normalizedTribals
             : Array.from({ length: tribalCount }, () => ({
+                eliminationType: "VOTE" as const,
                 bootCastawayId: null,
                 bootVoteCount: null,
                 immunityType: "INDIVIDUAL" as const,
@@ -803,38 +1109,40 @@ export async function PUT(
               { status: 400 }
             );
           }
-          if (tribal.bootVoteCount == null) {
-            return NextResponse.json(
-              { error: `Tribal ${tribalIndex + 1} boot vote count is required.` },
-              { status: 400 }
-            );
-          }
-          if (tribal.immunityType === "TRIBE") {
-            if (tribal.immunityWinningTribes.length === 0) {
+          if (tribal.eliminationType !== "MEDEVAC") {
+            if (tribal.bootVoteCount == null) {
               return NextResponse.json(
-                {
-                  error: `Tribal ${tribalIndex + 1} needs at least one winning tribe when immunity type is tribe.`,
-                },
+                { error: `Tribal ${tribalIndex + 1} boot vote count is required.` },
                 { status: 400 }
               );
             }
-            for (const tribe of tribal.immunityWinningTribes) {
-              if (!validTribes.has(tribe)) {
+            if (tribal.immunityType === "TRIBE") {
+              if (tribal.immunityWinningTribes.length === 0) {
                 return NextResponse.json(
                   {
-                    error: `Tribal ${tribalIndex + 1} includes an unknown winning tribe (${tribe}).`,
+                    error: `Tribal ${tribalIndex + 1} needs at least one winning tribe when immunity type is tribe.`,
                   },
                   { status: 400 }
                 );
               }
+              for (const tribe of tribal.immunityWinningTribes) {
+                if (!validTribes.has(tribe)) {
+                  return NextResponse.json(
+                    {
+                      error: `Tribal ${tribalIndex + 1} includes an unknown winning tribe (${tribe}).`,
+                    },
+                    { status: 400 }
+                  );
+                }
+              }
+            } else if (tribal.immunityWinnerCastawayIds.length === 0) {
+              return NextResponse.json(
+                {
+                  error: `Tribal ${tribalIndex + 1} needs at least one immunity winner when immunity type is individual.`,
+                },
+                { status: 400 }
+              );
             }
-          } else if (tribal.immunityWinnerCastawayIds.length === 0) {
-            return NextResponse.json(
-              {
-                error: `Tribal ${tribalIndex + 1} needs at least one immunity winner when immunity type is individual.`,
-              },
-              { status: 400 }
-            );
           }
           if (bootSet.has(tribal.bootCastawayId)) {
             return NextResponse.json(
@@ -862,6 +1170,7 @@ export async function PUT(
       }
 
       for (const tribal of normalizedTribals) {
+        if (tribal.eliminationType === "MEDEVAC") continue;
         if (tribal.immunityType === "TRIBE") {
           const winningTribes = new Set(tribal.immunityWinningTribes);
           for (const row of parsedResults) {
@@ -884,8 +1193,9 @@ export async function PUT(
 
       const shouldAutoApplyImmunity = normalizedTribals.some(
         (tribal) =>
-          (tribal.immunityType === "TRIBE" && tribal.immunityWinningTribes.length > 0) ||
-          (tribal.immunityType === "INDIVIDUAL" && tribal.immunityWinnerCastawayIds.length > 0)
+          tribal.eliminationType !== "MEDEVAC" &&
+          ((tribal.immunityType === "TRIBE" && tribal.immunityWinningTribes.length > 0) ||
+            (tribal.immunityType === "INDIVIDUAL" && tribal.immunityWinnerCastawayIds.length > 0))
       );
 
       const bootCastawayIdSet = new Set<string>(
@@ -923,7 +1233,8 @@ export async function PUT(
         };
       });
 
-      const episode = await prisma.$transaction(async (tx) => {
+      const savedWeek = await prisma.$transaction(async (tx) => {
+        const beforeSnapshot = await computeLeagueRankSnapshot(tx, league.id, league.showType);
         const episodeForWeek = await tx.episode.upsert({
           where: { leagueId_week: { leagueId: league.id, week: weekNum } },
           create: { leagueId: league.id, week: weekNum },
@@ -1023,12 +1334,26 @@ export async function PUT(
 
         await recalculateEliminationPlacements(tx, league.id);
         await recomputeSurvivorWeekScores(tx, league.id, episodeForWeek.id);
-        return episodeForWeek;
+        const afterSnapshot = await computeLeagueRankSnapshot(tx, league.id, league.showType);
+        return { episodeId: episodeForWeek.id, beforeSnapshot, afterSnapshot };
       });
+
+      try {
+        await sendWeekResultsPostedNotifications({
+          leagueId: league.id,
+          leagueName: league.name,
+          week: weekNum,
+          showType: league.showType,
+          beforeSnapshot: savedWeek.beforeSnapshot,
+          afterSnapshot: savedWeek.afterSnapshot,
+        });
+      } catch {
+        // Keep weekly result submission resilient if push delivery fails.
+      }
 
       return NextResponse.json({
         ok: true,
-        episodeId: episode.id,
+        episodeId: savedWeek.episodeId,
         message: "Survivor week saved and scores recomputed.",
       });
     }

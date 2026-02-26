@@ -17,6 +17,7 @@ type BootOrderAward = {
 };
 
 type TribalOutcome = {
+  eliminationType: "VOTE" | "MEDEVAC";
   bootCastawayId: string | null;
   bootVoteCount: number | null;
   immunityType: "INDIVIDUAL" | "TRIBE";
@@ -76,6 +77,8 @@ function parseTribalOutcomeArray(value: Prisma.JsonValue | null | undefined): Tr
   for (const row of value) {
     const obj = jsonObject(row);
     if (!obj) continue;
+    const eliminationType =
+      obj.eliminationType === "MEDEVAC" ? ("MEDEVAC" as const) : ("VOTE" as const);
     const immunityWinnerCastawayIds = jsonStringArray(obj.immunityWinnerCastawayIds);
     const immunityWinningTribes = jsonStringArray(obj.immunityWinningTribes);
     const immunityType =
@@ -84,18 +87,23 @@ function parseTribalOutcomeArray(value: Prisma.JsonValue | null | undefined): Tr
         : ("INDIVIDUAL" as const);
     const immunityWinnerCastawayId = jsonString(obj.immunityWinnerCastawayId);
     out.push({
+      eliminationType,
       bootCastawayId: jsonString(obj.bootCastawayId),
-      bootVoteCount: jsonInt(obj.bootVoteCount),
-      immunityType,
+      bootVoteCount: eliminationType === "MEDEVAC" ? null : jsonInt(obj.bootVoteCount),
+      immunityType: eliminationType === "MEDEVAC" ? "INDIVIDUAL" : immunityType,
       immunityWinnerCastawayId:
-        immunityWinnerCastawayIds[0] ?? immunityWinnerCastawayId ?? null,
+        eliminationType === "MEDEVAC"
+          ? null
+          : immunityWinnerCastawayIds[0] ?? immunityWinnerCastawayId ?? null,
       immunityWinnerCastawayIds:
-        immunityWinnerCastawayIds.length > 0
-          ? immunityWinnerCastawayIds
-          : immunityWinnerCastawayId
-            ? [immunityWinnerCastawayId]
-            : [],
-      immunityWinningTribes,
+        eliminationType === "MEDEVAC"
+          ? []
+          : immunityWinnerCastawayIds.length > 0
+            ? immunityWinnerCastawayIds
+            : immunityWinnerCastawayId
+              ? [immunityWinnerCastawayId]
+              : [],
+      immunityWinningTribes: eliminationType === "MEDEVAC" ? [] : immunityWinningTribes,
     });
   }
 
@@ -486,6 +494,7 @@ export async function recomputeSurvivorWeekScores(
     episode.survivorMeta?.immunityWinnerCastawayId != null
   ) {
     fallbackActualTribals.push({
+      eliminationType: "VOTE",
       bootCastawayId: firstBootCastawayId,
       bootVoteCount: episode.survivorMeta?.bootVoteCount ?? null,
       immunityType: "INDIVIDUAL",
@@ -503,6 +512,7 @@ export async function recomputeSurvivorWeekScores(
     episode.survivorMeta?.secondaryImmunityWinnerCastawayId != null
   ) {
     fallbackActualTribals.push({
+      eliminationType: "VOTE",
       bootCastawayId: secondBootCastawayId,
       bootVoteCount: episode.survivorMeta?.secondaryBootVoteCount ?? null,
       immunityType: "INDIVIDUAL",
@@ -518,6 +528,7 @@ export async function recomputeSurvivorWeekScores(
   if (fallbackActualTribals.length === 0 && actualBootCastawayIds.length > 0) {
     for (const castawayId of actualBootCastawayIds) {
       fallbackActualTribals.push({
+        eliminationType: "VOTE",
         bootCastawayId: castawayId,
         bootVoteCount: null,
         immunityType: "INDIVIDUAL",
@@ -788,6 +799,7 @@ export async function recomputeSurvivorWeekScores(
         }
 
         if (
+          actual.eliminationType === "VOTE" &&
           predicted.bootVoteCount != null &&
           actual.bootVoteCount != null &&
           predicted.bootVoteCount === actual.bootVoteCount
@@ -795,7 +807,7 @@ export async function recomputeSurvivorWeekScores(
           voteCountExactHits += 1;
         }
 
-        if (predicted.immunityWinnerCastawayId != null) {
+        if (actual.eliminationType === "VOTE" && predicted.immunityWinnerCastawayId != null) {
           const actualWinnerSet = new Set(
             actual.immunityWinnerCastawayIds.length > 0
               ? actual.immunityWinnerCastawayIds

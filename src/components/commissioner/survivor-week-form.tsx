@@ -24,8 +24,10 @@ type ExistingMeta = {
 } | null;
 
 type TribalImmunityMode = "INDIVIDUAL" | "TRIBE";
+type TribalEliminationType = "VOTE" | "MEDEVAC";
 
 type TribalMetaState = {
+  eliminationType: TribalEliminationType;
   bootCastawayId: string;
   bootVoteCount: string;
   immunityType: TribalImmunityMode;
@@ -73,6 +75,7 @@ function ordinal(index: number) {
 function parseInitialTribals(existingMeta: ExistingMeta, defaultCount: number): TribalMetaState[] {
   const tribalCount = Math.max(1, existingMeta?.tribalCount ?? defaultCount);
   const fallback: TribalMetaState[] = Array.from({ length: tribalCount }, () => ({
+    eliminationType: "VOTE",
     bootCastawayId: "",
     bootVoteCount: "",
     immunityType: "INDIVIDUAL",
@@ -100,25 +103,32 @@ function parseInitialTribals(existingMeta: ExistingMeta, defaultCount: number): 
       const winningTribes = rawWinningTribes
         .map((value) => (typeof value === "string" ? value.trim() : ""))
         .filter(Boolean);
+      const eliminationType: TribalEliminationType =
+        obj.eliminationType === "MEDEVAC" ? "MEDEVAC" : "VOTE";
 
       const immunityType: TribalImmunityMode =
         obj.immunityType === "TRIBE" || winningTribes.length > 0 ? "TRIBE" : "INDIVIDUAL";
 
       return {
+        eliminationType,
         bootCastawayId:
           typeof obj.bootCastawayId === "string" ? obj.bootCastawayId : "",
         bootVoteCount:
-          typeof obj.bootVoteCount === "number" || typeof obj.bootVoteCount === "string"
+          eliminationType === "MEDEVAC"
+            ? ""
+            : typeof obj.bootVoteCount === "number" || typeof obj.bootVoteCount === "string"
             ? String(obj.bootVoteCount)
             : "",
-        immunityType,
+        immunityType: eliminationType === "MEDEVAC" ? "INDIVIDUAL" : immunityType,
         immunityWinnerCastawayIds:
-          winnerIds.length > 0
+          eliminationType === "MEDEVAC"
+            ? []
+            : winnerIds.length > 0
             ? winnerIds
             : singleWinner
               ? [singleWinner]
               : [],
-        immunityWinningTribes: winningTribes,
+        immunityWinningTribes: eliminationType === "MEDEVAC" ? [] : winningTribes,
       };
     });
     if (parsed.length === tribalCount) return parsed;
@@ -126,6 +136,7 @@ function parseInitialTribals(existingMeta: ExistingMeta, defaultCount: number): 
 
   if (existingMeta) {
     fallback[0] = {
+      eliminationType: "VOTE",
       bootCastawayId: existingMeta.bootCastawayId ?? "",
       bootVoteCount: existingMeta.bootVoteCount != null ? String(existingMeta.bootVoteCount) : "",
       immunityType: "INDIVIDUAL",
@@ -136,6 +147,7 @@ function parseInitialTribals(existingMeta: ExistingMeta, defaultCount: number): 
     };
     if (fallback.length > 1) {
       fallback[1] = {
+        eliminationType: "VOTE",
         bootCastawayId: existingMeta.secondaryBootCastawayId ?? "",
         bootVoteCount:
           existingMeta.secondaryBootVoteCount != null
@@ -251,6 +263,7 @@ export default function SurvivorWeekForm(props: {
       if (prev.length > next) return prev.slice(0, next);
       return prev.concat(
         Array.from({ length: next - prev.length }, () => ({
+          eliminationType: "VOTE" as TribalEliminationType,
           bootCastawayId: "",
           bootVoteCount: "",
           immunityType: "INDIVIDUAL" as TribalImmunityMode,
@@ -259,6 +272,25 @@ export default function SurvivorWeekForm(props: {
         }))
       );
     });
+  }
+
+  function setTribalEliminationType(index: number, eliminationType: TribalEliminationType) {
+    setTribals((prev) =>
+      prev.map((tribal, tribalIndex) => {
+        if (tribalIndex !== index) return tribal;
+        if (eliminationType === "MEDEVAC") {
+          return {
+            ...tribal,
+            eliminationType,
+            bootVoteCount: "",
+            immunityType: "INDIVIDUAL",
+            immunityWinnerCastawayIds: [],
+            immunityWinningTribes: [],
+          };
+        }
+        return { ...tribal, eliminationType };
+      })
+    );
   }
 
   function updateTribal(index: number, patch: Partial<TribalMetaState>) {
@@ -334,6 +366,7 @@ export default function SurvivorWeekForm(props: {
     }
 
     for (const tribal of tribals) {
+      if (tribal.eliminationType === "MEDEVAC") continue;
       if (tribal.immunityType === "TRIBE") {
         const winningTribes = new Set(tribal.immunityWinningTribes);
         for (const row of rows) {
@@ -356,6 +389,24 @@ export default function SurvivorWeekForm(props: {
 
     startTransition(async () => {
       let payload: unknown;
+      const serializedTribals = tribals.map((tribal) => {
+        const medevac = tribal.eliminationType === "MEDEVAC";
+        return {
+          eliminationType: tribal.eliminationType,
+          bootCastawayId: tribal.bootCastawayId || null,
+          bootVoteCount: medevac
+            ? null
+            : tribal.bootVoteCount
+              ? Number(tribal.bootVoteCount)
+              : null,
+          immunityType: medevac ? "INDIVIDUAL" : tribal.immunityType,
+          immunityWinnerCastawayIds: medevac ? [] : tribal.immunityWinnerCastawayIds,
+          immunityWinningTribes: medevac ? [] : tribal.immunityWinningTribes,
+          immunityWinnerCastawayId: medevac
+            ? null
+            : tribal.immunityWinnerCastawayIds[0] ?? null,
+        };
+      });
 
       if (mode === "recompute") {
         payload = { recomputeOnly: true };
@@ -365,28 +416,14 @@ export default function SurvivorWeekForm(props: {
           tribalCount,
           isMerge,
           isNonElimination,
-          tribals: tribals.map((tribal) => ({
-            bootCastawayId: tribal.bootCastawayId || null,
-            bootVoteCount: tribal.bootVoteCount ? Number(tribal.bootVoteCount) : null,
-            immunityType: tribal.immunityType,
-            immunityWinnerCastawayIds: tribal.immunityWinnerCastawayIds,
-            immunityWinningTribes: tribal.immunityWinningTribes,
-            immunityWinnerCastawayId: tribal.immunityWinnerCastawayIds[0] ?? null,
-          })),
+          tribals: serializedTribals,
         };
       } else {
         payload = {
           tribalCount,
           isMerge,
           isNonElimination,
-          tribals: tribals.map((tribal) => ({
-            bootCastawayId: tribal.bootCastawayId || null,
-            bootVoteCount: tribal.bootVoteCount ? Number(tribal.bootVoteCount) : null,
-            immunityType: tribal.immunityType,
-            immunityWinnerCastawayIds: tribal.immunityWinnerCastawayIds,
-            immunityWinningTribes: tribal.immunityWinningTribes,
-            immunityWinnerCastawayId: tribal.immunityWinnerCastawayIds[0] ?? null,
-          })),
+          tribals: serializedTribals,
           results: rows.map((row) => ({
             castawayId: row.castawayId,
             individualImmunityWins:
@@ -530,80 +567,106 @@ export default function SurvivorWeekForm(props: {
                 </label>
 
                 <label className="text-xs">
-                  Boot vote count
-                  <input
-                    type="number"
-                    min={0}
-                    className={inputClass}
-                    value={tribal.bootVoteCount}
-                    onChange={(e) =>
-                      updateTribal(index, { bootVoteCount: e.target.value })
-                    }
-                    disabled={disabled || isPending || isNonElimination}
-                  />
-                </label>
-
-                <label className="text-xs">
-                  Immunity type
+                  Elimination type
                   <select
                     className={selectClass}
-                    value={tribal.immunityType}
+                    value={tribal.eliminationType}
                     onChange={(e) =>
-                      updateTribal(index, {
-                        immunityType: e.target.value === "TRIBE" ? "TRIBE" : "INDIVIDUAL",
-                      })
+                      setTribalEliminationType(
+                        index,
+                        e.target.value === "MEDEVAC" ? "MEDEVAC" : "VOTE"
+                      )
                     }
-                    disabled={disabled || isPending}
+                    disabled={disabled || isPending || isNonElimination}
                   >
-                    <option value="INDIVIDUAL">Individual</option>
-                    <option value="TRIBE">Tribe</option>
+                    <option value="VOTE">Vote</option>
+                    <option value="MEDEVAC">Med Evac</option>
                   </select>
                 </label>
 
-                {tribal.immunityType === "INDIVIDUAL" ? (
-                  <div className="text-xs">
-                    <p className="font-medium">Immunity winners (multiple allowed)</p>
-                    <div className="mt-1 max-h-36 space-y-1 overflow-auto rounded-lg border border-border/70 bg-background/70 p-2">
-                      {castaways.map((castaway) => (
-                        <label
-                          key={`${castaway.id}-meta-immunity-winner-${index}`}
-                          className="flex items-center gap-2 text-xs"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={tribal.immunityWinnerCastawayIds.includes(castaway.id)}
-                            onChange={() => toggleImmunityWinner(index, castaway.id)}
-                            disabled={disabled || isPending}
-                          />
-                          <span className="truncate">{castaway.name}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
+                {tribal.eliminationType === "MEDEVAC" ? (
+                  <p className="rounded-lg border border-border/70 bg-background/60 px-3 py-2 text-xs text-muted-foreground">
+                    Med evac tribals do not have vote counts or immunity winners.
+                  </p>
                 ) : (
-                  <div className="text-xs">
-                    <p className="font-medium">Winning tribes (multiple allowed)</p>
-                    <div className="mt-1 max-h-36 space-y-1 overflow-auto rounded-lg border border-border/70 bg-background/70 p-2">
-                      {tribes.length === 0 ? (
-                        <p className="text-xs text-muted-foreground">No tribe labels available yet.</p>
-                      ) : (
-                        tribes.map((tribe) => (
-                          <label
-                            key={`${tribe}-meta-immunity-tribe-${index}`}
-                            className="flex items-center gap-2 text-xs"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={tribal.immunityWinningTribes.includes(tribe)}
-                              onChange={() => toggleImmunityWinningTribe(index, tribe)}
-                              disabled={disabled || isPending}
-                            />
-                            <span className="truncate">{tribe}</span>
-                          </label>
-                        ))
-                      )}
-                    </div>
-                  </div>
+                  <>
+                    <label className="text-xs">
+                      Boot vote count
+                      <input
+                        type="number"
+                        min={0}
+                        className={inputClass}
+                        value={tribal.bootVoteCount}
+                        onChange={(e) =>
+                          updateTribal(index, { bootVoteCount: e.target.value })
+                        }
+                        disabled={disabled || isPending || isNonElimination}
+                      />
+                    </label>
+
+                    <label className="text-xs">
+                      Immunity type
+                      <select
+                        className={selectClass}
+                        value={tribal.immunityType}
+                        onChange={(e) =>
+                          updateTribal(index, {
+                            immunityType: e.target.value === "TRIBE" ? "TRIBE" : "INDIVIDUAL",
+                          })
+                        }
+                        disabled={disabled || isPending}
+                      >
+                        <option value="INDIVIDUAL">Individual</option>
+                        <option value="TRIBE">Tribe</option>
+                      </select>
+                    </label>
+
+                    {tribal.immunityType === "INDIVIDUAL" ? (
+                      <div className="text-xs">
+                        <p className="font-medium">Immunity winners (multiple allowed)</p>
+                        <div className="mt-1 max-h-36 space-y-1 overflow-auto rounded-lg border border-border/70 bg-background/70 p-2">
+                          {castaways.map((castaway) => (
+                            <label
+                              key={`${castaway.id}-meta-immunity-winner-${index}`}
+                              className="flex items-center gap-2 text-xs"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={tribal.immunityWinnerCastawayIds.includes(castaway.id)}
+                                onChange={() => toggleImmunityWinner(index, castaway.id)}
+                                disabled={disabled || isPending}
+                              />
+                              <span className="truncate">{castaway.name}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-xs">
+                        <p className="font-medium">Winning tribes (multiple allowed)</p>
+                        <div className="mt-1 max-h-36 space-y-1 overflow-auto rounded-lg border border-border/70 bg-background/70 p-2">
+                          {tribes.length === 0 ? (
+                            <p className="text-xs text-muted-foreground">No tribe labels available yet.</p>
+                          ) : (
+                            tribes.map((tribe) => (
+                              <label
+                                key={`${tribe}-meta-immunity-tribe-${index}`}
+                                className="flex items-center gap-2 text-xs"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={tribal.immunityWinningTribes.includes(tribe)}
+                                  onChange={() => toggleImmunityWinningTribe(index, tribe)}
+                                  disabled={disabled || isPending}
+                                />
+                                <span className="truncate">{tribe}</span>
+                              </label>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             ))}
@@ -617,7 +680,7 @@ export default function SurvivorWeekForm(props: {
           Enter weekly outcomes for each castaway. Endgame placement is optional and usually
           finale-only. Confessional leader points are calculated automatically from cumulative
           totals. Elimination is derived from the boot castaways selected above. Immunity win
-          credits are calculated automatically from the immunity settings in episode metadata.
+          credits are calculated automatically from vote-based immunity settings in episode metadata.
         </p>
 
         <div className="space-y-4">
