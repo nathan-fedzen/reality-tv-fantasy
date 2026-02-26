@@ -1,13 +1,16 @@
 "use client";
 
 import { useTheme } from "next-themes";
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 
 export default function ThemeToggle() {
   const { theme, setTheme, systemTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
 
-  useEffect(() => setMounted(true), []);
   if (!mounted) return null;
 
   const current = theme === "system" ? systemTheme : theme;
@@ -16,7 +19,7 @@ export default function ThemeToggle() {
   return (
     <button
       onClick={() => setTheme(isDark ? "light" : "dark")}
-      className="rounded-full border border-border bg-card px-3 py-1.5 text-sm font-semibold hover:bg-accent transition"
+      className="touch-manipulation select-none rounded-full border border-border bg-card px-3 py-1.5 text-sm font-semibold transition duration-150 hover:bg-accent active:scale-[0.98] active:bg-accent/85"
       title="Toggle theme"
     >
       {isDark ? "🌙" : "☀️"}

@@ -83,10 +83,10 @@ export default function LeaguePageNav({
               <Link
                 href={item.href}
                 className={cn(
-                  "inline-flex h-10 w-full items-center justify-center rounded-full border px-3 text-[13px] font-semibold leading-none transition sm:text-sm",
+                  "inline-flex h-10 w-full touch-manipulation select-none items-center justify-center rounded-full border px-3 text-[13px] font-semibold leading-none transition duration-150 active:scale-[0.98] sm:text-sm",
                   isActive
-                    ? "border-primary bg-primary text-primary-foreground shadow-sm"
-                    : "border-border bg-card hover:bg-accent"
+                    ? "border-primary bg-primary text-primary-foreground shadow-sm active:bg-primary/90"
+                    : "border-border bg-card hover:bg-accent active:bg-accent/85"
                 )}
               >
                 <span className="sm:hidden">{item.mobileLabel ?? item.label}</span>

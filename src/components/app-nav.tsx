@@ -22,10 +22,10 @@ function NavLink({
       href={href}
       onClick={onClick}
       className={[
-        "relative rounded-full px-4 py-1.5 text-sm font-semibold transition",
+        "relative touch-manipulation select-none rounded-full px-4 py-1.5 text-sm font-semibold transition duration-150 active:scale-[0.98]",
         active
-          ? "bg-primary text-primary-foreground shadow-sm"
-          : "text-muted-foreground hover:text-foreground hover:bg-accent",
+          ? "bg-primary text-primary-foreground shadow-sm active:bg-primary/90"
+          : "text-muted-foreground hover:text-foreground hover:bg-accent active:text-foreground active:bg-accent/85",
       ].join(" ")}
     >
       {label}
@@ -50,8 +50,10 @@ function MenuItem({
       href={href}
       onClick={onClick}
       className={[
-        "block w-full rounded-xl px-3 py-2 text-sm font-semibold transition",
-        active ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground",
+        "block w-full touch-manipulation select-none rounded-xl px-3 py-2 text-sm font-semibold transition duration-150 active:scale-[0.98]",
+        active
+          ? "bg-accent text-foreground active:bg-accent/85"
+          : "text-muted-foreground hover:bg-accent hover:text-foreground active:bg-accent/85 active:text-foreground",
       ].join(" ")}
     >
       {label}
@@ -103,7 +105,7 @@ export default function AppNav({ userName }: { userName: string }) {
             {/* User (clickable on desktop) */}
             <Link
               href="/account"
-              className="hidden sm:inline-flex min-w-0 max-w-[220px] truncate rounded-full border border-border bg-card px-3 py-1.5 text-sm font-semibold text-muted-foreground hover:bg-accent hover:text-foreground transition"
+              className="hidden sm:inline-flex min-w-0 max-w-[220px] touch-manipulation select-none truncate rounded-full border border-border bg-card px-3 py-1.5 text-sm font-semibold text-muted-foreground transition duration-150 hover:bg-accent hover:text-foreground active:scale-[0.98] active:bg-accent/85 active:text-foreground"
               title="Account"
             >
               {userName}
@@ -118,7 +120,7 @@ export default function AppNav({ userName }: { userName: string }) {
                 type="button"
                 onClick={() => setOpen((v) => !v)}
                 aria-expanded={open}
-                className="rounded-full border border-border px-3 py-1.5 text-sm font-semibold hover:bg-accent transition"
+                className="touch-manipulation select-none rounded-full border border-border px-3 py-1.5 text-sm font-semibold transition duration-150 hover:bg-accent active:scale-[0.98] active:bg-accent/85"
               >
                 Menu
               </button>
@@ -136,7 +138,7 @@ export default function AppNav({ userName }: { userName: string }) {
                   <form action="/api/auth/signout" method="post">
                     <button
                       type="submit"
-                      className="w-full rounded-xl px-3 py-2 text-left text-sm font-semibold text-muted-foreground hover:text-foreground hover:bg-accent transition"
+                      className="w-full touch-manipulation select-none rounded-xl px-3 py-2 text-left text-sm font-semibold text-muted-foreground transition duration-150 hover:text-foreground hover:bg-accent active:scale-[0.98] active:text-foreground active:bg-accent/85"
                       onClick={() => setOpen(false)}
                     >
                       Log out
