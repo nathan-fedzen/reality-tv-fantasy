@@ -205,9 +205,6 @@ export default function PushNotificationsForm() {
       <p className="text-sm text-muted-foreground">
         Enable push notifications for league chat and pick reminders.
       </p>
-      <p className="text-xs text-muted-foreground">
-        iPhone: Add this site to your Home Screen first, then enable notifications.
-      </p>
 
       {support === "unsupported" && (
         <p className="text-sm text-amber-600">
@@ -255,6 +252,28 @@ export default function PushNotificationsForm() {
             </button>
           </>
         )}
+      </div>
+
+      <div className="rounded-md border border-border/70 bg-background/60 p-3 text-xs text-muted-foreground space-y-2">
+        <p className="font-medium text-foreground">Phone setup (for push notifications)</p>
+        <div>
+          <p className="font-medium">iPhone (Safari)</p>
+          <ol className="mt-1 list-decimal pl-4 space-y-0.5">
+            <li>Open this site in Safari.</li>
+            <li>Tap Share, then tap Add to Home Screen.</li>
+            <li>Tap Add, then open the app icon from your Home Screen.</li>
+            <li>Return here and tap Enable notifications.</li>
+          </ol>
+        </div>
+        <div>
+          <p className="font-medium">Android (Chrome)</p>
+          <ol className="mt-1 list-decimal pl-4 space-y-0.5">
+            <li>Open this site in Chrome.</li>
+            <li>Tap the menu (three dots).</li>
+            <li>Tap Add to Home screen or Install app.</li>
+            <li>Open it from your Home Screen, then tap Enable notifications here.</li>
+          </ol>
+        </div>
       </div>
 
       <p className="text-xs text-muted-foreground">
