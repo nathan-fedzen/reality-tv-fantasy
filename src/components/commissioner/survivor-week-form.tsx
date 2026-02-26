@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
+import { SURVIVOR_SEASON_WEEKS } from "@/lib/survivor/season";
 
 type CastawayOption = {
   id: string;
@@ -22,10 +23,14 @@ type ExistingMeta = {
   secondaryImmunityWinnerCastawayId: string | null;
 } | null;
 
+type TribalImmunityMode = "INDIVIDUAL" | "TRIBE";
+
 type TribalMetaState = {
   bootCastawayId: string;
   bootVoteCount: string;
-  immunityWinnerCastawayId: string;
+  immunityType: TribalImmunityMode;
+  immunityWinnerCastawayIds: string[];
+  immunityWinningTribes: string[];
 };
 
 type ExistingResult = {
@@ -70,12 +75,35 @@ function parseInitialTribals(existingMeta: ExistingMeta, defaultCount: number): 
   const fallback: TribalMetaState[] = Array.from({ length: tribalCount }, () => ({
     bootCastawayId: "",
     bootVoteCount: "",
-    immunityWinnerCastawayId: "",
+    immunityType: "INDIVIDUAL",
+    immunityWinnerCastawayIds: [],
+    immunityWinningTribes: [],
   }));
 
   if (existingMeta?.tribals && Array.isArray(existingMeta.tribals)) {
     const parsed = existingMeta.tribals.map((row) => {
       const obj = row && typeof row === "object" ? (row as Record<string, unknown>) : {};
+      const rawWinnerIds = Array.isArray(obj.immunityWinnerCastawayIds)
+        ? obj.immunityWinnerCastawayIds
+        : [];
+      const winnerIds = rawWinnerIds
+        .map((value) => (typeof value === "string" ? value.trim() : ""))
+        .filter(Boolean);
+      const singleWinner =
+        typeof obj.immunityWinnerCastawayId === "string"
+          ? obj.immunityWinnerCastawayId.trim()
+          : "";
+
+      const rawWinningTribes = Array.isArray(obj.immunityWinningTribes)
+        ? obj.immunityWinningTribes
+        : [];
+      const winningTribes = rawWinningTribes
+        .map((value) => (typeof value === "string" ? value.trim() : ""))
+        .filter(Boolean);
+
+      const immunityType: TribalImmunityMode =
+        obj.immunityType === "TRIBE" || winningTribes.length > 0 ? "TRIBE" : "INDIVIDUAL";
+
       return {
         bootCastawayId:
           typeof obj.bootCastawayId === "string" ? obj.bootCastawayId : "",
@@ -83,10 +111,14 @@ function parseInitialTribals(existingMeta: ExistingMeta, defaultCount: number): 
           typeof obj.bootVoteCount === "number" || typeof obj.bootVoteCount === "string"
             ? String(obj.bootVoteCount)
             : "",
-        immunityWinnerCastawayId:
-          typeof obj.immunityWinnerCastawayId === "string"
-            ? obj.immunityWinnerCastawayId
-            : "",
+        immunityType,
+        immunityWinnerCastawayIds:
+          winnerIds.length > 0
+            ? winnerIds
+            : singleWinner
+              ? [singleWinner]
+              : [],
+        immunityWinningTribes: winningTribes,
       };
     });
     if (parsed.length === tribalCount) return parsed;
@@ -96,7 +128,11 @@ function parseInitialTribals(existingMeta: ExistingMeta, defaultCount: number): 
     fallback[0] = {
       bootCastawayId: existingMeta.bootCastawayId ?? "",
       bootVoteCount: existingMeta.bootVoteCount != null ? String(existingMeta.bootVoteCount) : "",
-      immunityWinnerCastawayId: existingMeta.immunityWinnerCastawayId ?? "",
+      immunityType: "INDIVIDUAL",
+      immunityWinnerCastawayIds: existingMeta.immunityWinnerCastawayId
+        ? [existingMeta.immunityWinnerCastawayId]
+        : [],
+      immunityWinningTribes: [],
     };
     if (fallback.length > 1) {
       fallback[1] = {
@@ -105,7 +141,11 @@ function parseInitialTribals(existingMeta: ExistingMeta, defaultCount: number): 
           existingMeta.secondaryBootVoteCount != null
             ? String(existingMeta.secondaryBootVoteCount)
             : "",
-        immunityWinnerCastawayId: existingMeta.secondaryImmunityWinnerCastawayId ?? "",
+        immunityType: "INDIVIDUAL",
+        immunityWinnerCastawayIds: existingMeta.secondaryImmunityWinnerCastawayId
+          ? [existingMeta.secondaryImmunityWinnerCastawayId]
+          : [],
+        immunityWinningTribes: [],
       };
     }
   }
@@ -197,6 +237,7 @@ export default function SurvivorWeekForm(props: {
   );
 
   const [message, setMessage] = useState("");
+  const isFinaleWeek = week === SURVIVOR_SEASON_WEEKS;
 
   function updateRow(castawayId: string, patch: Partial<RowState>) {
     setRows((prev) => prev.map((row) => (row.castawayId !== castawayId ? row : { ...row, ...patch })));
@@ -212,7 +253,9 @@ export default function SurvivorWeekForm(props: {
         Array.from({ length: next - prev.length }, () => ({
           bootCastawayId: "",
           bootVoteCount: "",
-          immunityWinnerCastawayId: "",
+          immunityType: "INDIVIDUAL" as TribalImmunityMode,
+          immunityWinnerCastawayIds: [],
+          immunityWinningTribes: [],
         }))
       );
     });
@@ -226,6 +269,44 @@ export default function SurvivorWeekForm(props: {
     );
   }
 
+  function toggleImmunityWinner(index: number, castawayId: string) {
+    setTribals((prev) =>
+      prev.map((tribal, tribalIndex) => {
+        if (tribalIndex !== index) return tribal;
+        const exists = tribal.immunityWinnerCastawayIds.includes(castawayId);
+        return {
+          ...tribal,
+          immunityWinnerCastawayIds: exists
+            ? tribal.immunityWinnerCastawayIds.filter((id) => id !== castawayId)
+            : [...tribal.immunityWinnerCastawayIds, castawayId],
+        };
+      })
+    );
+  }
+
+  function toggleImmunityWinningTribe(index: number, tribe: string) {
+    setTribals((prev) =>
+      prev.map((tribal, tribalIndex) => {
+        if (tribalIndex !== index) return tribal;
+        const exists = tribal.immunityWinningTribes.includes(tribe);
+        return {
+          ...tribal,
+          immunityWinningTribes: exists
+            ? tribal.immunityWinningTribes.filter((name) => name !== tribe)
+            : [...tribal.immunityWinningTribes, tribe],
+        };
+      })
+    );
+  }
+
+  const tribes = useMemo(() => {
+    const set = new Set<string>();
+    for (const castaway of castaways) {
+      if (castaway.tribe) set.add(castaway.tribe);
+    }
+    return Array.from(set.values()).sort((a, b) => a.localeCompare(b));
+  }, [castaways]);
+
   const bootedCastawayIds = useMemo(
     () =>
       new Set<string>(
@@ -237,6 +318,38 @@ export default function SurvivorWeekForm(props: {
       ),
     [isNonElimination, tribals]
   );
+
+  const castawayById = useMemo(
+    () => new Map(castaways.map((castaway) => [castaway.id, castaway])),
+    [castaways]
+  );
+
+  const computedImmunityWinsByCastaway = useMemo(() => {
+    const individualWins = new Map<string, number>();
+    const tribeWins = new Map<string, number>();
+
+    for (const row of rows) {
+      individualWins.set(row.castawayId, 0);
+      tribeWins.set(row.castawayId, 0);
+    }
+
+    for (const tribal of tribals) {
+      if (tribal.immunityType === "TRIBE") {
+        const winningTribes = new Set(tribal.immunityWinningTribes);
+        for (const row of rows) {
+          const tribe = castawayById.get(row.castawayId)?.tribe ?? null;
+          if (!tribe || !winningTribes.has(tribe)) continue;
+          tribeWins.set(row.castawayId, (tribeWins.get(row.castawayId) ?? 0) + 1);
+        }
+      } else {
+        for (const castawayId of tribal.immunityWinnerCastawayIds) {
+          individualWins.set(castawayId, (individualWins.get(castawayId) ?? 0) + 1);
+        }
+      }
+    }
+
+    return { individualWins, tribeWins };
+  }, [castawayById, rows, tribals]);
 
   async function save(mode: "save" | "recompute" | "configure") {
     setMessage("");
@@ -255,7 +368,10 @@ export default function SurvivorWeekForm(props: {
           tribals: tribals.map((tribal) => ({
             bootCastawayId: tribal.bootCastawayId || null,
             bootVoteCount: tribal.bootVoteCount ? Number(tribal.bootVoteCount) : null,
-            immunityWinnerCastawayId: tribal.immunityWinnerCastawayId || null,
+            immunityType: tribal.immunityType,
+            immunityWinnerCastawayIds: tribal.immunityWinnerCastawayIds,
+            immunityWinningTribes: tribal.immunityWinningTribes,
+            immunityWinnerCastawayId: tribal.immunityWinnerCastawayIds[0] ?? null,
           })),
         };
       } else {
@@ -266,18 +382,23 @@ export default function SurvivorWeekForm(props: {
           tribals: tribals.map((tribal) => ({
             bootCastawayId: tribal.bootCastawayId || null,
             bootVoteCount: tribal.bootVoteCount ? Number(tribal.bootVoteCount) : null,
-            immunityWinnerCastawayId: tribal.immunityWinnerCastawayId || null,
+            immunityType: tribal.immunityType,
+            immunityWinnerCastawayIds: tribal.immunityWinnerCastawayIds,
+            immunityWinningTribes: tribal.immunityWinningTribes,
+            immunityWinnerCastawayId: tribal.immunityWinnerCastawayIds[0] ?? null,
           })),
           results: rows.map((row) => ({
             castawayId: row.castawayId,
-            individualImmunityWins: Number(row.individualImmunityWins),
-            tribeImmunityWins: Number(row.tribeImmunityWins),
+            individualImmunityWins:
+              computedImmunityWinsByCastaway.individualWins.get(row.castawayId) ?? 0,
+            tribeImmunityWins: computedImmunityWinsByCastaway.tribeWins.get(row.castawayId) ?? 0,
             individualRewardWins: Number(row.individualRewardWins),
             advantagesFound: Number(row.advantagesFound),
             idolsPlayedSuccessfully: Number(row.idolsPlayedSuccessfully),
             votesReceived: Number(row.votesReceived),
             confessionalCount: Number(row.confessionalCount),
-            endgamePlacement: row.endgamePlacement ? Number(row.endgamePlacement) : null,
+            endgamePlacement:
+              isFinaleWeek && row.endgamePlacement ? Number(row.endgamePlacement) : null,
           })),
         };
       }
@@ -423,25 +544,67 @@ export default function SurvivorWeekForm(props: {
                 </label>
 
                 <label className="text-xs">
-                  Immunity winner
+                  Immunity type
                   <select
                     className={selectClass}
-                    value={tribal.immunityWinnerCastawayId}
+                    value={tribal.immunityType}
                     onChange={(e) =>
                       updateTribal(index, {
-                        immunityWinnerCastawayId: e.target.value,
+                        immunityType: e.target.value === "TRIBE" ? "TRIBE" : "INDIVIDUAL",
                       })
                     }
                     disabled={disabled || isPending}
                   >
-                    <option value="">None</option>
-                    {castaways.map((castaway) => (
-                      <option key={`${castaway.id}-meta-immunity-${index}`} value={castaway.id}>
-                        {castaway.name}
-                      </option>
-                    ))}
+                    <option value="INDIVIDUAL">Individual</option>
+                    <option value="TRIBE">Tribe</option>
                   </select>
                 </label>
+
+                {tribal.immunityType === "INDIVIDUAL" ? (
+                  <div className="text-xs">
+                    <p className="font-medium">Immunity winners (multiple allowed)</p>
+                    <div className="mt-1 max-h-36 space-y-1 overflow-auto rounded-lg border border-border/70 bg-background/70 p-2">
+                      {castaways.map((castaway) => (
+                        <label
+                          key={`${castaway.id}-meta-immunity-winner-${index}`}
+                          className="flex items-center gap-2 text-xs"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={tribal.immunityWinnerCastawayIds.includes(castaway.id)}
+                            onChange={() => toggleImmunityWinner(index, castaway.id)}
+                            disabled={disabled || isPending}
+                          />
+                          <span className="truncate">{castaway.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-xs">
+                    <p className="font-medium">Winning tribes (multiple allowed)</p>
+                    <div className="mt-1 max-h-36 space-y-1 overflow-auto rounded-lg border border-border/70 bg-background/70 p-2">
+                      {tribes.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">No tribe labels available yet.</p>
+                      ) : (
+                        tribes.map((tribe) => (
+                          <label
+                            key={`${tribe}-meta-immunity-tribe-${index}`}
+                            className="flex items-center gap-2 text-xs"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={tribal.immunityWinningTribes.includes(tribe)}
+                              onChange={() => toggleImmunityWinningTribe(index, tribe)}
+                              disabled={disabled || isPending}
+                            />
+                            <span className="truncate">{tribe}</span>
+                          </label>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -453,7 +616,8 @@ export default function SurvivorWeekForm(props: {
         <p className="text-xs text-muted-foreground">
           Enter weekly outcomes for each castaway. Endgame placement is optional and usually
           finale-only. Confessional leader points are calculated automatically from cumulative
-          totals. Elimination is derived from the boot castaways selected above.
+          totals. Elimination is derived from the boot castaways selected above. Immunity win
+          credits are calculated automatically from the immunity settings in episode metadata.
         </p>
 
         <div className="space-y-4">
@@ -492,42 +656,6 @@ export default function SurvivorWeekForm(props: {
                 </div>
 
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                  <label className={statTileClass(row.individualImmunityWins)}>
-                    <span className={statLabelClass}>
-                      Ind. immunity
-                    </span>
-                    <input
-                      type="number"
-                      min={0}
-                      className={inputClass}
-                      value={row.individualImmunityWins}
-                      onChange={(e) =>
-                        updateRow(row.castawayId, {
-                          individualImmunityWins: Number(e.target.value || 0),
-                        })
-                      }
-                      disabled={disabled || isPending}
-                    />
-                  </label>
-
-                  <label className={statTileClass(row.tribeImmunityWins)}>
-                    <span className={statLabelClass}>
-                      Tribe immunity
-                    </span>
-                    <input
-                      type="number"
-                      min={0}
-                      className={inputClass}
-                      value={row.tribeImmunityWins}
-                      onChange={(e) =>
-                        updateRow(row.castawayId, {
-                          tribeImmunityWins: Number(e.target.value || 0),
-                        })
-                      }
-                      disabled={disabled || isPending}
-                    />
-                  </label>
-
                   <label className={statTileClass(row.individualRewardWins)}>
                     <span className={statLabelClass}>
                       Reward wins
@@ -618,30 +746,32 @@ export default function SurvivorWeekForm(props: {
                     />
                   </label>
 
-                  <label
-                    className={statTileClass(
-                      Number.isFinite(Number(row.endgamePlacement))
-                        ? Number(row.endgamePlacement)
-                        : 0,
-                      "neutral"
-                    )}
-                  >
-                    <span className={statLabelClass}>
-                      Endgame place
-                    </span>
-                    <input
-                      type="number"
-                      min={1}
-                      className={inputClass}
-                      value={row.endgamePlacement}
-                      onChange={(e) =>
-                        updateRow(row.castawayId, {
-                          endgamePlacement: e.target.value,
-                        })
-                      }
-                      disabled={disabled || isPending}
-                    />
-                  </label>
+                  {isFinaleWeek && (
+                    <label
+                      className={statTileClass(
+                        Number.isFinite(Number(row.endgamePlacement))
+                          ? Number(row.endgamePlacement)
+                          : 0,
+                        "neutral"
+                      )}
+                    >
+                      <span className={statLabelClass}>
+                        Endgame place
+                      </span>
+                      <input
+                        type="number"
+                        min={1}
+                        className={inputClass}
+                        value={row.endgamePlacement}
+                        onChange={(e) =>
+                          updateRow(row.castawayId, {
+                            endgamePlacement: e.target.value,
+                          })
+                        }
+                        disabled={disabled || isPending}
+                      />
+                    </label>
+                  )}
                 </div>
               </div>
             );

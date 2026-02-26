@@ -29,6 +29,9 @@ type SurvivorTribalMetaPayload = {
   bootCastawayId?: string | null;
   bootVoteCount?: number | null;
   immunityWinnerCastawayId?: string | null;
+  immunityType?: "INDIVIDUAL" | "TRIBE" | string | null;
+  immunityWinnerCastawayIds?: string[] | null;
+  immunityWinningTribes?: string[] | null;
 };
 
 type SurvivorWeekPayload = {
@@ -47,6 +50,15 @@ type SurvivorWeekPayload = {
   results: SurvivorCastawayResultPayload[];
 };
 
+type NormalizedSurvivorTribalMeta = {
+  bootCastawayId: string | null;
+  bootVoteCount: number | null;
+  immunityType: "INDIVIDUAL" | "TRIBE";
+  immunityWinnerCastawayId: string | null;
+  immunityWinnerCastawayIds: string[];
+  immunityWinningTribes: string[];
+};
+
 function parseNonNegativeInt(input: unknown) {
   const n = Number(input);
   if (!Number.isInteger(n) || n < 0) return null;
@@ -58,27 +70,54 @@ function cleanId(value: unknown) {
   return value.trim();
 }
 
+function cleanStringArray(values: unknown): string[] {
+  if (!Array.isArray(values)) return [];
+  const out = values
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter(Boolean);
+  return Array.from(new Set(out));
+}
+
 function normalizeTribalResults(body: SurvivorWeekPayload) {
   if (Array.isArray(body.tribals) && body.tribals.length > 0) {
     return body.tribals.map((tribal) => ({
       bootCastawayId: cleanId(tribal.bootCastawayId) || null,
       bootVoteCount:
         tribal.bootVoteCount == null ? null : parseNonNegativeInt(tribal.bootVoteCount),
+      immunityType:
+        tribal.immunityType === "TRIBE" ? ("TRIBE" as const) : ("INDIVIDUAL" as const),
+      immunityWinnerCastawayIds: (() => {
+        const winnerIds = cleanStringArray(tribal.immunityWinnerCastawayIds);
+        if (winnerIds.length > 0) return winnerIds;
+        const single = cleanId(tribal.immunityWinnerCastawayId);
+        return single ? [single] : [];
+      })(),
+      immunityWinningTribes: cleanStringArray(tribal.immunityWinningTribes),
       immunityWinnerCastawayId: cleanId(tribal.immunityWinnerCastawayId) || null,
     }));
   }
 
-  const first = {
+  const first: NormalizedSurvivorTribalMeta = {
     bootCastawayId: cleanId(body.bootCastawayId) || null,
     bootVoteCount: body.bootVoteCount == null ? null : parseNonNegativeInt(body.bootVoteCount),
+    immunityType: "INDIVIDUAL",
+    immunityWinnerCastawayIds: cleanId(body.immunityWinnerCastawayId)
+      ? [cleanId(body.immunityWinnerCastawayId)]
+      : [],
+    immunityWinningTribes: [],
     immunityWinnerCastawayId: cleanId(body.immunityWinnerCastawayId) || null,
   };
-  const second = {
+  const second: NormalizedSurvivorTribalMeta = {
     bootCastawayId: cleanId(body.secondaryBootCastawayId) || null,
     bootVoteCount:
       body.secondaryBootVoteCount == null
         ? null
         : parseNonNegativeInt(body.secondaryBootVoteCount),
+    immunityType: "INDIVIDUAL",
+    immunityWinnerCastawayIds: cleanId(body.secondaryImmunityWinnerCastawayId)
+      ? [cleanId(body.secondaryImmunityWinnerCastawayId)]
+      : [],
+    immunityWinningTribes: [],
     immunityWinnerCastawayId: cleanId(body.secondaryImmunityWinnerCastawayId) || null,
   };
 
@@ -86,7 +125,9 @@ function normalizeTribalResults(body: SurvivorWeekPayload) {
   if (
     second.bootCastawayId ||
     second.bootVoteCount != null ||
-    second.immunityWinnerCastawayId
+    second.immunityWinnerCastawayId ||
+    second.immunityWinnerCastawayIds.length > 0 ||
+    second.immunityWinningTribes.length > 0
   ) {
     out.push(second);
   }
@@ -152,6 +193,118 @@ async function recalculateConfessionalLeaders(
       });
     }
   }
+}
+
+async function recalculateEliminationPlacements(
+  tx: Prisma.TransactionClient,
+  leagueId: string
+) {
+  const [castawayCount, episodes] = await Promise.all([
+    tx.survivorCastaway.count({ where: { leagueId } }),
+    tx.episode.findMany({
+      where: { leagueId },
+      orderBy: { week: "asc" },
+      select: {
+        week: true,
+        survivorMeta: {
+          select: {
+            tribals: true,
+            bootCastawayId: true,
+            secondaryBootCastawayId: true,
+          },
+        },
+        survivorCastawayResults: {
+          where: { eliminated: true },
+          select: { castawayId: true },
+        },
+      },
+    }),
+  ]);
+
+  if (castawayCount <= 0) return;
+
+  const eliminationOrder: string[] = [];
+  const seen = new Set<string>();
+
+  for (const episode of episodes) {
+    const eliminatedIds = episode.survivorCastawayResults.map((row) => row.castawayId);
+    if (eliminatedIds.length === 0) continue;
+
+    const eliminatedSet = new Set(eliminatedIds);
+    const orderedForEpisode: string[] = [];
+
+    if (Array.isArray(episode.survivorMeta?.tribals)) {
+      for (const row of episode.survivorMeta.tribals) {
+        if (!row || typeof row !== "object" || Array.isArray(row)) continue;
+        const bootCastawayId = (row as Record<string, unknown>).bootCastawayId;
+        if (typeof bootCastawayId !== "string") continue;
+        const castawayId = bootCastawayId.trim();
+        if (!castawayId || !eliminatedSet.has(castawayId)) continue;
+        if (!orderedForEpisode.includes(castawayId)) orderedForEpisode.push(castawayId);
+      }
+    }
+
+    const firstBoot = episode.survivorMeta?.bootCastawayId?.trim() ?? "";
+    if (firstBoot && eliminatedSet.has(firstBoot) && !orderedForEpisode.includes(firstBoot)) {
+      orderedForEpisode.push(firstBoot);
+    }
+    const secondBoot = episode.survivorMeta?.secondaryBootCastawayId?.trim() ?? "";
+    if (secondBoot && eliminatedSet.has(secondBoot) && !orderedForEpisode.includes(secondBoot)) {
+      orderedForEpisode.push(secondBoot);
+    }
+
+    for (const castawayId of eliminatedIds.sort((a, b) => a.localeCompare(b))) {
+      if (!orderedForEpisode.includes(castawayId)) orderedForEpisode.push(castawayId);
+    }
+
+    for (const castawayId of orderedForEpisode) {
+      if (seen.has(castawayId)) continue;
+      seen.add(castawayId);
+      eliminationOrder.push(castawayId);
+    }
+  }
+
+  if (eliminationOrder.length === 0) {
+    await tx.survivorEpisodeCastawayResult.updateMany({
+      where: { leagueId, eliminated: true },
+      data: { endgamePlacement: null },
+    });
+    return;
+  }
+
+  const eliminationPlacementByCastaway = new Map<string, number>();
+  eliminationOrder.forEach((castawayId, index) => {
+    eliminationPlacementByCastaway.set(castawayId, castawayCount - index);
+  });
+
+  const eliminatedCastawayIds = Array.from(eliminationPlacementByCastaway.keys());
+  await tx.survivorEpisodeCastawayResult.updateMany({
+    where: {
+      leagueId,
+      eliminated: true,
+      castawayId: {
+        notIn: eliminatedCastawayIds,
+      },
+    },
+    data: {
+      endgamePlacement: null,
+    },
+  });
+
+  await Promise.all(
+    eliminatedCastawayIds.map((castawayId) =>
+      tx.survivorEpisodeCastawayResult.updateMany({
+        where: {
+          leagueId,
+          castawayId,
+          eliminated: true,
+        },
+        data: {
+          endgamePlacement: eliminationPlacementByCastaway.get(castawayId) ?? null,
+        },
+      })
+    )
+  );
 }
 
 function prismaErrorToResponse(err: unknown) {
@@ -303,6 +456,8 @@ export async function PUT(
     if (league.showType === "SURVIVOR" && weekNum > SURVIVOR_SEASON_WEEKS) {
       return NextResponse.json({ error: "Invalid week" }, { status: 400 });
     }
+    const isSurvivorFinaleWeek =
+      league.showType === "SURVIVOR" && weekNum === SURVIVOR_SEASON_WEEKS;
 
     const isCommissioner = league.createdById === user.id;
     if (!isCommissioner) {
@@ -399,6 +554,7 @@ export async function PUT(
 
         await prisma.$transaction(async (tx) => {
           await recalculateConfessionalLeaders(tx, league.id);
+          await recalculateEliminationPlacements(tx, league.id);
           await recomputeSurvivorWeekScores(tx, league.id, existingEpisode.id);
         });
         return NextResponse.json({
@@ -442,6 +598,9 @@ export async function PUT(
             : Array.from({ length: tribalCount }, () => ({
                 bootCastawayId: null,
                 bootVoteCount: null,
+                immunityType: "INDIVIDUAL" as const,
+                immunityWinnerCastawayIds: [] as string[],
+                immunityWinningTribes: [] as string[],
                 immunityWinnerCastawayId: null,
               }));
 
@@ -469,9 +628,14 @@ export async function PUT(
               secondaryBootCastawayId: secondTribal?.bootCastawayId ?? null,
               bootVoteCount: firstTribal?.bootVoteCount ?? null,
               secondaryBootVoteCount: secondTribal?.bootVoteCount ?? null,
-              immunityWinnerCastawayId: firstTribal?.immunityWinnerCastawayId ?? null,
+              immunityWinnerCastawayId:
+                firstTribal?.immunityWinnerCastawayIds[0] ??
+                firstTribal?.immunityWinnerCastawayId ??
+                null,
               secondaryImmunityWinnerCastawayId:
-                secondTribal?.immunityWinnerCastawayId ?? null,
+                secondTribal?.immunityWinnerCastawayIds[0] ??
+                secondTribal?.immunityWinnerCastawayId ??
+                null,
               lockedAt: null,
             },
             update: {
@@ -483,9 +647,14 @@ export async function PUT(
               secondaryBootCastawayId: secondTribal?.bootCastawayId ?? null,
               bootVoteCount: firstTribal?.bootVoteCount ?? null,
               secondaryBootVoteCount: secondTribal?.bootVoteCount ?? null,
-              immunityWinnerCastawayId: firstTribal?.immunityWinnerCastawayId ?? null,
+              immunityWinnerCastawayId:
+                firstTribal?.immunityWinnerCastawayIds[0] ??
+                firstTribal?.immunityWinnerCastawayId ??
+                null,
               secondaryImmunityWinnerCastawayId:
-                secondTribal?.immunityWinnerCastawayId ?? null,
+                secondTribal?.immunityWinnerCastawayIds[0] ??
+                secondTribal?.immunityWinnerCastawayId ??
+                null,
               lockedAt: null,
             },
           });
@@ -523,11 +692,14 @@ export async function PUT(
       for (const tribal of normalizedTribals) {
         if (tribal.bootCastawayId) idsToValidate.add(tribal.bootCastawayId);
         if (tribal.immunityWinnerCastawayId) idsToValidate.add(tribal.immunityWinnerCastawayId);
+        for (const winnerId of tribal.immunityWinnerCastawayIds) {
+          idsToValidate.add(winnerId);
+        }
       }
 
       const validCastaways = await prisma.survivorCastaway.findMany({
         where: { leagueId: league.id, id: { in: Array.from(idsToValidate) } },
-        select: { id: true },
+        select: { id: true, tribe: true },
       });
       if (validCastaways.length !== idsToValidate.size) {
         return NextResponse.json(
@@ -535,6 +707,12 @@ export async function PUT(
           { status: 400 }
         );
       }
+      const castawayTribeById = new Map(validCastaways.map((castaway) => [castaway.id, castaway.tribe]));
+      const validTribes = new Set(
+        validCastaways
+          .map((castaway) => castaway.tribe)
+          .filter((tribe): tribe is string => typeof tribe === "string" && tribe.trim().length > 0)
+      );
 
       const parsedResults: Array<{
         castawayId: string;
@@ -573,7 +751,11 @@ export async function PUT(
         }
 
         let endgamePlacement: number | null = null;
-        if (row.endgamePlacement != null && row.endgamePlacement !== 0) {
+        if (
+          isSurvivorFinaleWeek &&
+          row.endgamePlacement != null &&
+          row.endgamePlacement !== 0
+        ) {
           const parsedPlacement = Number(row.endgamePlacement);
           if (!Number.isInteger(parsedPlacement) || parsedPlacement < 1 || parsedPlacement > 20) {
             return NextResponse.json(
@@ -627,9 +809,30 @@ export async function PUT(
               { status: 400 }
             );
           }
-          if (!tribal.immunityWinnerCastawayId) {
+          if (tribal.immunityType === "TRIBE") {
+            if (tribal.immunityWinningTribes.length === 0) {
+              return NextResponse.json(
+                {
+                  error: `Tribal ${tribalIndex + 1} needs at least one winning tribe when immunity type is tribe.`,
+                },
+                { status: 400 }
+              );
+            }
+            for (const tribe of tribal.immunityWinningTribes) {
+              if (!validTribes.has(tribe)) {
+                return NextResponse.json(
+                  {
+                    error: `Tribal ${tribalIndex + 1} includes an unknown winning tribe (${tribe}).`,
+                  },
+                  { status: 400 }
+                );
+              }
+            }
+          } else if (tribal.immunityWinnerCastawayIds.length === 0) {
             return NextResponse.json(
-              { error: `Tribal ${tribalIndex + 1} immunity winner is required.` },
+              {
+                error: `Tribal ${tribalIndex + 1} needs at least one immunity winner when immunity type is individual.`,
+              },
               { status: 400 }
             );
           }
@@ -650,6 +853,40 @@ export async function PUT(
           }
         }
       }
+
+      const individualImmunityWinsByCastaway = new Map<string, number>();
+      const tribeImmunityWinsByCastaway = new Map<string, number>();
+      for (const row of parsedResults) {
+        individualImmunityWinsByCastaway.set(row.castawayId, 0);
+        tribeImmunityWinsByCastaway.set(row.castawayId, 0);
+      }
+
+      for (const tribal of normalizedTribals) {
+        if (tribal.immunityType === "TRIBE") {
+          const winningTribes = new Set(tribal.immunityWinningTribes);
+          for (const row of parsedResults) {
+            const tribe = castawayTribeById.get(row.castawayId) ?? null;
+            if (!tribe || !winningTribes.has(tribe)) continue;
+            tribeImmunityWinsByCastaway.set(
+              row.castawayId,
+              (tribeImmunityWinsByCastaway.get(row.castawayId) ?? 0) + 1
+            );
+          }
+        } else {
+          for (const winnerId of tribal.immunityWinnerCastawayIds) {
+            individualImmunityWinsByCastaway.set(
+              winnerId,
+              (individualImmunityWinsByCastaway.get(winnerId) ?? 0) + 1
+            );
+          }
+        }
+      }
+
+      const shouldAutoApplyImmunity = normalizedTribals.some(
+        (tribal) =>
+          (tribal.immunityType === "TRIBE" && tribal.immunityWinningTribes.length > 0) ||
+          (tribal.immunityType === "INDIVIDUAL" && tribal.immunityWinnerCastawayIds.length > 0)
+      );
 
       const bootCastawayIdSet = new Set<string>(
         body.isNonElimination
@@ -675,6 +912,12 @@ export async function PUT(
         const eliminated = bootCastawayIdSet.has(row.castawayId);
         return {
           ...row,
+          individualImmunityWins: shouldAutoApplyImmunity
+            ? individualImmunityWinsByCastaway.get(row.castawayId) ?? 0
+            : row.individualImmunityWins,
+          tribeImmunityWins: shouldAutoApplyImmunity
+            ? tribeImmunityWinsByCastaway.get(row.castawayId) ?? 0
+            : row.tribeImmunityWins,
           eliminated,
           survived: !eliminated,
         };
@@ -704,9 +947,14 @@ export async function PUT(
             secondaryBootCastawayId: secondTribal?.bootCastawayId ?? null,
             bootVoteCount: firstTribal?.bootVoteCount ?? null,
             secondaryBootVoteCount: secondTribal?.bootVoteCount ?? null,
-            immunityWinnerCastawayId: firstTribal?.immunityWinnerCastawayId ?? null,
+            immunityWinnerCastawayId:
+              firstTribal?.immunityWinnerCastawayIds[0] ??
+              firstTribal?.immunityWinnerCastawayId ??
+              null,
             secondaryImmunityWinnerCastawayId:
-              secondTribal?.immunityWinnerCastawayId ?? null,
+              secondTribal?.immunityWinnerCastawayIds[0] ??
+              secondTribal?.immunityWinnerCastawayId ??
+              null,
             lockedAt: new Date(),
           },
           update: {
@@ -718,9 +966,14 @@ export async function PUT(
             secondaryBootCastawayId: secondTribal?.bootCastawayId ?? null,
             bootVoteCount: firstTribal?.bootVoteCount ?? null,
             secondaryBootVoteCount: secondTribal?.bootVoteCount ?? null,
-            immunityWinnerCastawayId: firstTribal?.immunityWinnerCastawayId ?? null,
+            immunityWinnerCastawayId:
+              firstTribal?.immunityWinnerCastawayIds[0] ??
+              firstTribal?.immunityWinnerCastawayId ??
+              null,
             secondaryImmunityWinnerCastawayId:
-              secondTribal?.immunityWinnerCastawayId ?? null,
+              secondTribal?.immunityWinnerCastawayIds[0] ??
+              secondTribal?.immunityWinnerCastawayId ??
+              null,
             lockedAt: new Date(),
           },
         });
@@ -768,6 +1021,7 @@ export async function PUT(
           )
         );
 
+        await recalculateEliminationPlacements(tx, league.id);
         await recomputeSurvivorWeekScores(tx, league.id, episodeForWeek.id);
         return episodeForWeek;
       });
